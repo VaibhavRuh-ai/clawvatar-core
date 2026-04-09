@@ -220,10 +220,12 @@ async def ws_endpoint(ws: WebSocket):
 
 @app.get("/")
 async def index():
-    return HTMLResponse(UI_HTML)
+    from fastapi.responses import FileResponse
+    ui_path = Path(__file__).parent / "clawvatar_core" / "static" / "index.html"
+    return FileResponse(ui_path)
 
 
-UI_HTML = r"""<!DOCTYPE html>
+_UNUSED_OLD_HTML = r"""<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Clawvatar — Agent Video Call</title>

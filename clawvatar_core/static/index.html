@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Clawvatar</title>
+<style>
+:root{--bg:#08080e;--bg2:#10101a;--bg3:#1a1a28;--border:#1a1a2a;--text:#ddd;--muted:#666;--accent:#7c6ef0;--green:#4ade80;--red:#f66;--blue:#60a5fa}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* Top bar */
+.top{background:var(--bg2);padding:8px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);height:44px}
+.top h1{font-size:14px;color:#fff;font-weight:700}.top h1 b{color:var(--accent)}
+.top .spacer{flex:1}
+.pill{font-size:9px;padding:2px 8px;border-radius:8px;font-weight:600}
+.pill.off{background:#2a1515;color:var(--red)}.pill.on{background:#152a15;color:var(--green)}.pill.info{background:#15152a;color:var(--blue)}
+
+/* Main layout */
+.main{flex:1;display:flex;overflow:hidden}
+
+/* Avatar viewport */
+#view{flex:1;background:#0a0a12;position:relative;min-width:0}
+canvas{width:100%;height:100%;display:block}
+.hud{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:6px;font:10px/1.6 'SF Mono',monospace;color:#555;pointer-events:none}
+.hud b{color:var(--green)}
+.call-controls{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+.call-btn{width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.call-btn:hover{transform:scale(1.1)}
+.call-btn.mic{background:#333}.call-btn.mic.active{background:var(--red)}
+.call-btn.end{background:var(--red)}
+.call-btn svg{width:20px;height:20px;fill:#fff}
+
+/* Sidebar */
+.side{width:380px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column}
+
+/* Tabs */
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tab{flex:1;padding:8px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Tab panels */
+.panel{flex:1;overflow-y:auto;display:none;flex-direction:column}
+.panel.active{display:flex}
+
+/* Setup panel */
+.setup{padding:12px;display:flex;flex-direction:column;gap:10px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.field select,.field input[type=text],.field input[type=password]{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px;outline:none}
+.field select:focus,.field input:focus{border-color:var(--accent)}
+.btn{padding:10px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;width:100%;transition:all .15s}
+.btn:active{transform:scale(.98)}
+.btn-accent{background:var(--accent)}.btn-accent:hover{background:#6a5bd6}
+.btn-green{background:#22663a}.btn-green:hover{background:#2a7a4a}
+.btn-sm{padding:6px 12px;font-size:11px;width:auto}
+input[type=file]{display:none}
+.upload-zone{border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;color:var(--muted);font-size:11px}
+.upload-zone:hover{border-color:var(--accent)}
+
+/* Chat panel */
+.chat-area{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{padding:8px 12px;border-radius:10px;max-width:85%;font-size:12px;line-height:1.5;word-wrap:break-word}
+.msg.user{background:#2a2a44;align-self:flex-end;border-bottom-right-radius:2px}
+.msg.agent{background:#1a2a1a;align-self:flex-start;border-bottom-left-radius:2px}
+.msg.sys{color:var(--muted);font-size:10px;align-self:center;font-style:italic}
+.chat-input{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:6px}
+.chat-input input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;outline:none}
+.chat-input button{background:var(--accent);border:none;border-radius:8px;padding:8px 16px;color:#fff;font-weight:700;cursor:pointer;font-size:12px}
+
+/* Status panel */
+.status-list{padding:12px;font-size:11px;line-height:2}
+.status-list .row{display:flex;justify-content:space-between}
+.status-list .row .k{color:var(--muted)}.status-list .row .v{color:var(--text)}
+
+/* Log */
+.log-area{border-top:1px solid var(--border);max-height:140px;overflow-y:auto;padding:8px 12px}
+.log-area div{font:10px/1.7 'SF Mono',monospace;color:#444}
+.log-area .ok{color:var(--green)}.log-area .er{color:var(--red)}.log-area .wr{color:orange}
+</style>
+</head>
+<body>
+<div class="top">
+    <h1><b>Claw</b>vatar</h1>
+    <div class="spacer"></div>
+    <span id="pWs" class="pill off">Server</span>
+    <span id="pOc" class="pill off">OpenClaw</span>
+    <span id="pLk" class="pill off">LiveKit</span>
+</div>
+<div class="main">
+    <div id="view">
+        <canvas id="c"></canvas>
+        <div class="hud"><b>FPS</b> <span id="hFps">0</span> &nbsp;<b>Viseme</b> <span id="hVis">-</span> &nbsp;<b>State</b> <span id="hState">idle</span></div>
+        <div class="call-controls">
+            <button class="call-btn mic" id="btnMic" onclick="toggleMic()" title="Toggle microphone">
+                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </button>
+            <button class="call-btn end" onclick="endCall()" title="End call">
+                <svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="side">
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('setup')">Setup</div>
+            <div class="tab" onclick="showTab('chat')">Chat</div>
+            <div class="tab" onclick="showTab('status')">Status</div>
+        </div>
+
+        <!-- Setup Tab -->
+        <div class="panel active" id="tab-setup">
+            <div class="setup">
+                <div class="field">
+                    <label>Server URL</label>
+                    <input type="text" id="serverUrl" placeholder="wss://host:port/ws">
+                </div>
+                <button class="btn btn-accent" onclick="connectServer()" id="btnConnect">Connect</button>
+
+                <div class="field">
+                    <label>Avatar</label>
+                    <div class="upload-zone" onclick="document.getElementById('avatarFile').click()">
+                        Click to upload .vrm avatar
+                    </div>
+                    <input type="file" id="avatarFile" accept=".vrm,.glb">
+                    <div id="avatarName" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+                </div>
+
+                <div class="field">
+                    <label>Agent</label>
+                    <select id="agentSel"><option value="">Select agent...</option></select>
+                </div>
+
+                <div class="field">
+                    <label>Audio File (test)</label>
+                    <input type="file" id="audioFile" accept=".wav,.mp3,.ogg,.webm,.m4a">
+                    <button class="btn btn-green btn-sm" onclick="document.getElementById('audioFile').click()" style="margin-top:4px">Upload Audio</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div class="panel" id="tab-chat">
+            <div class="chat-area" id="chatArea"></div>
+            <div class="chat-input">
+                <input id="chatInput" placeholder="Type a message..." autocomplete="off">
+                <button onclick="sendChat()">Send</button>
+            </div>
+        </div>
+
+        <!-- Status Tab -->
+        <div class="panel" id="tab-status">
+            <div class="status-list" id="statusList">
+                <div class="row"><span class="k">Server</span><span class="v" id="sServer">disconnected</span></div>
+                <div class="row"><span class="k">OpenClaw</span><span class="v" id="sOC">-</span></div>
+                <div class="row"><span class="k">Avatar</span><span class="v" id="sAvatar">none</span></div>
+                <div class="row"><span class="k">Agent</span><span class="v" id="sAgent">-</span></div>
+                <div class="row"><span class="k">Chunks sent</span><span class="v" id="sSent">0</span></div>
+                <div class="row"><span class="k">Frames recv</span><span class="v" id="sRecv">0</span></div>
+                <div class="row"><span class="k">Latency</span><span class="v" id="sLat">-</span></div>
+            </div>
+        </div>
+
+        <div class="log-area" id="log"></div>
+    </div>
+</div>
+
+<!-- Three.js -->
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+let VLP;try{VLP=(await import('https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.1/lib/three-vrm.module.min.js')).VRMLoaderPlugin;}catch(e){}
+
+const R=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));R.outputColorSpace=THREE.SRGBColorSpace;R.toneMapping=THREE.ACESFilmicToneMapping;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0a0a12);
+const cam=new THREE.PerspectiveCamera(20,1,.01,100);cam.position.set(0,1.35,.9);
+const ctrl=new OrbitControls(cam,R.domElement);ctrl.target.set(0,1.3,0);ctrl.enableDamping=true;ctrl.update();
+scene.add(new THREE.AmbientLight(0xffffff,.8));
+const d1=new THREE.DirectionalLight(0xffffff,1.2);d1.position.set(2,3,2);scene.add(d1);
+const d2=new THREE.DirectionalLight(0x8888ff,.4);d2.position.set(-2,1,-1);scene.add(d2);
+const ldr=new GLTFLoader();if(VLP)ldr.register(p=>new VLP(p));
+
+function rsz(){const v=document.getElementById('view');R.setSize(v.clientWidth,v.clientHeight);cam.aspect=v.clientWidth/v.clientHeight;cam.updateProjectionMatrix();}
+addEventListener('resize',rsz);rsz();
+
+let vrm=null,clk=new THREE.Clock(),curW={},tgtW={},curH={y:0,p:0,r:0},tgtH={y:0,p:0,r:0},hb=null;
+const NM={'blendShape2.mouth_a':'aa','blendShape2.mouth_i':'ih','blendShape2.mouth_u':'ou','blendShape2.mouth_e':'ee','blendShape2.mouth_o':'oh','blendShape2.Blink_L':'blinkLeft','blendShape2.Blink_R':'blinkRight','blendShape2.happy':'happy','blendShape2.angry':'angry','blendShape2.sorrow':'sad','blendShape2.joy':'surprised','happy':'happy','sad':'sad','relaxed':'relaxed','surprised':'surprised','blinkLeft':'blinkLeft','blinkRight':'blinkRight'};
+function lerp(a,b,t){return a+(b-a)*t}
+let fc=0,ft=performance.now();
+
+function anim(){
+    requestAnimationFrame(anim);ctrl.update();
+    for(const k of new Set([...Object.keys(curW),...Object.keys(tgtW)])){const c=curW[k]||0,t=tgtW[k]||0,v=lerp(c,t,.25);if(v>.003)curW[k]=v;else delete curW[k];}
+    curH.y=lerp(curH.y,tgtH.y,.12);curH.p=lerp(curH.p,tgtH.p,.12);curH.r=lerp(curH.r,tgtH.r,.12);
+    if(vrm){
+        const em=vrm.expressionManager;
+        if(em){for(const n of Object.keys(em.expressionMap))try{em.setValue(n,0)}catch(e){}for(const[k,v] of Object.entries(curW))try{em.setValue(NM[k]||k,Math.min(1,v))}catch(e){}}
+        if(hb){hb.rotation.y=curH.y*Math.PI/180;hb.rotation.x=curH.p*Math.PI/180;hb.rotation.z=curH.r*Math.PI/180;}
+        vrm.update(clk.getDelta());
+    }
+    R.render(scene,cam);
+    fc++;if(performance.now()-ft>=1e3){document.getElementById('hFps').textContent=fc;fc=0;ft=performance.now();}
+}
+anim();
+
+// Load VRM
+document.getElementById('avatarFile').onchange=async function(){
+    if(!this.files.length)return;const f=this.files[0];
+    const u=URL.createObjectURL(f);
+    if(vrm){scene.remove(vrm.scene);vrm=null;hb=null;}
+    try{
+        const g=await ldr.loadAsync(u);vrm=g.userData.vrm;
+        if(vrm){
+            scene.add(vrm.scene);cam.position.set(0,1.35,.9);ctrl.target.set(0,1.3,0);ctrl.update();
+            try{const h=vrm.humanoid;if(h){const la=h.getNormalizedBoneNode('leftUpperArm'),ra=h.getNormalizedBoneNode('rightUpperArm');if(la)la.rotation.z=1.2;if(ra)ra.rotation.z=-1.2;hb=h.getNormalizedBoneNode('head');}}catch(e){}
+            const names=vrm.expressionManager?Object.keys(vrm.expressionManager.expressionMap):[];
+            document.getElementById('avatarName').textContent=f.name+' ('+names.length+' expressions)';
+            document.getElementById('sAvatar').textContent=f.name;
+            log('Avatar: '+f.name+' — '+names.length+' expressions','ok');
+            if(window._ws&&window._ws.readyState===1){
+                const fd=new FormData();fd.append('file',f);
+                try{const r=await fetch(location.protocol+'//'+location.host+'/upload',{method:'POST',body:fd});const d=await r.json();if(!d.error)window._ws.send(JSON.stringify({type:'avatar.load',model_path:d.path}));}catch(e){}
+            }
+        }
+    }catch(e){log('Avatar error: '+e.message,'er');}
+    URL.revokeObjectURL(u);this.value='';
+};
+
+window._setTgt=function(w,h){tgtW=w;tgtH=h;};
+</script>
+
+<script>
+// === App Logic ===
+var _ws=null,connected=false,isPlaying=false,sentC=0,recvC=0;
+var micStream=null,micProc=null,micCtx=null,micOn=false;
+
+// --- Tabs ---
+function showTab(name){
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active')});
+    document.getElementById('tab-'+name).classList.add('active');
+    document.querySelectorAll('.tab').forEach(function(t){if(t.textContent.toLowerCase()===name)t.classList.add('active')});
+}
+
+// --- Log ---
+function log(m,c){var d=document.createElement('div');d.className=c||'';d.textContent=new Date().toLocaleTimeString()+' '+m;var b=document.getElementById('log');b.appendChild(d);b.scrollTop=99999;}
+
+// --- Chat ---
+function addChat(t,c){var d=document.createElement('div');d.className='msg '+(c||'agent');d.textContent=t;var a=document.getElementById('chatArea');a.appendChild(d);a.scrollTop=99999;}
+
+// --- Auto-detect server URL ---
+var proto=location.protocol==='https:'?'wss:':'ws:';
+document.getElementById('serverUrl').value=proto+'//'+location.host+'/ws';
+
+// --- Connect ---
+function connectServer(){
+    if(connected){if(_ws)_ws.close();return;}
+    var url=document.getElementById('serverUrl').value;
+    log('Connecting...');
+    _ws=new WebSocket(url);window._ws=_ws;
+    _ws.onopen=function(){
+        connected=true;
+        document.getElementById('pWs').className='pill on';document.getElementById('pWs').textContent='Server';
+        document.getElementById('btnConnect').textContent='Disconnect';
+        document.getElementById('sServer').textContent='connected';
+        log('Connected','ok');
+        _ws.send(JSON.stringify({type:'list_agents'}));
+    };
+    _ws.onclose=function(){
+        connected=false;
+        document.getElementById('pWs').className='pill off';document.getElementById('pWs').textContent='Server';
+        document.getElementById('btnConnect').textContent='Connect';
+        document.getElementById('sServer').textContent='disconnected';
+        log('Disconnected','wr');
+    };
+    _ws.onerror=function(){log('Connection error','er')};
+    _ws.onmessage=function(e){
+        try{
+            var m=JSON.parse(e.data);
+            if(m.type==='weights'&&!isPlaying){
+                recvC++;document.getElementById('sRecv').textContent=recvC;
+                window._setTgt(m.weights||{},{y:(m.head&&m.head.yaw)||0,p:(m.head&&m.head.pitch)||0,r:(m.head&&m.head.roll)||0});
+                if(m.viseme)document.getElementById('hVis').textContent=m.viseme;
+                document.getElementById('hState').textContent=m.is_speaking?'speaking':'idle';
+                if(m.latency_ms)document.getElementById('sLat').textContent=m.latency_ms.toFixed(0)+'ms';
+            }else if(m.type==='batch_weights'){
+                playBatch(m);
+            }else if(m.type==='agents'){
+                var s=document.getElementById('agentSel');s.innerHTML='<option value="">Select agent...</option>';
+                m.agents.forEach(function(a){var o=document.createElement('option');o.value=a.id;o.textContent=a.id;s.appendChild(o);});
+                document.getElementById('pOc').className='pill info';document.getElementById('pOc').textContent='OC: '+m.agents.length;
+                document.getElementById('sOC').textContent=m.agents.length+' agents';
+                log('OpenClaw: '+m.agents.length+' agents','ok');
+            }else if(m.type==='agent.text'){
+                addChat('['+(m.agent||'agent')+'] '+m.text,'agent');
+            }else if(m.type==='status'){
+                addChat(m.message,'sys');document.getElementById('hState').textContent=m.message;
+            }else if(m.type==='avatar.ready'){
+                log('Avatar ready: '+(m.info&&m.info.name),'ok');
+            }else if(m.type==='error'){
+                addChat('Error: '+m.message,'sys');log('Error: '+m.message,'er');
+            }
+        }catch(err){console.error(err);}
+    };
+}
+
+// --- Send Chat ---
+function sendChat(){
+    var inp=document.getElementById('chatInput'),text=inp.value.trim();
+    var agent=document.getElementById('agentSel').value;
+    if(!text||!_ws||_ws.readyState!==1)return;
+    if(!agent){addChat('Select an agent first','sys');return;}
+    addChat(text,'user');
+    document.getElementById('sAgent').textContent=agent;
+    _ws.send(JSON.stringify({type:'chat',text:text,agent:agent}));
+    inp.value='';
+}
+document.getElementById('chatInput').onkeydown=function(e){if(e.key==='Enter')sendChat();};
+
+// --- Batch Playback ---
+function playBatch(m){
+    isPlaying=true;var frames=m.frames||[],ab64=m.audio_b64||'',sr=m.sample_rate||22050;
+    if(!frames.length||!ab64){isPlaying=false;return;}
+    var raw=atob(ab64),buf=new ArrayBuffer(raw.length),v=new Uint8Array(buf);
+    for(var i=0;i<raw.length;i++)v[i]=raw.charCodeAt(i);
+    var ctx=new AudioContext({sampleRate:sr}),pcm=new Int16Array(buf),abuf=ctx.createBuffer(1,pcm.length,sr),ch=abuf.getChannelData(0);
+    for(var i=0;i<pcm.length;i++)ch[i]=pcm[i]/32768;
+    var src=ctx.createBufferSource();src.buffer=abuf;src.connect(ctx.destination);
+    var dur=pcm.length/sr,chunkDur=dur/Math.max(frames.length,1),startT=ctx.currentTime;src.start(startT);
+    document.getElementById('hState').textContent='speaking';
+    var fi=0;
+    function sync(){
+        var el=ctx.currentTime-startT,tgt=Math.floor(el/chunkDur);
+        if(tgt!==fi&&tgt<frames.length){fi=tgt;var f=frames[fi];window._setTgt(f.w||{},{y:(f.h&&f.h.yaw)||0,p:(f.h&&f.h.pitch)||0,r:(f.h&&f.h.roll)||0});if(f.v)document.getElementById('hVis').textContent=f.v;}
+        if(el<dur)requestAnimationFrame(sync);
+        else{isPlaying=false;window._setTgt({},{y:0,p:0,r:0});document.getElementById('hState').textContent='idle';document.getElementById('hVis').textContent='-';}
+    }
+    sync();src.onended=function(){ctx.close();};
+}
+
+// --- Mic ---
+function toggleMic(){micOn?stopMic():startMic();}
+async function startMic(){
+    if(!_ws||_ws.readyState!==1){log('Connect first','er');return;}
+    try{
+        micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+        micCtx=new AudioContext();var rate=micCtx.sampleRate;
+        var src=micCtx.createMediaStreamSource(micStream);
+        micProc=micCtx.createScriptProcessor(4096,1,1);
+        micProc.onaudioprocess=function(e){
+            var raw=e.inputBuffer.getChannelData(0);
+            var ratio=rate/16000,len=Math.round(raw.length/ratio),ds=new Float32Array(len);
+            for(var i=0;i<len;i++){var idx=i*ratio,lo=Math.floor(idx),hi=Math.min(lo+1,raw.length-1),f=idx-lo;ds[i]=raw[lo]*(1-f)+raw[hi]*f;}
+            var i16=new Int16Array(ds.length);for(var j=0;j<ds.length;j++)i16[j]=Math.max(-32768,Math.min(32767,Math.round(ds[j]*32768)));
+            var bytes=new Uint8Array(i16.buffer);var bin='';for(var j=0;j<bytes.length;j++)bin+=String.fromCharCode(bytes[j]);
+            _ws.send(JSON.stringify({type:'audio',data:btoa(bin),sample_rate:16000}));
+            sentC++;if(sentC%20===0)document.getElementById('sSent').textContent=sentC;
+        };
+        src.connect(micProc);micProc.connect(micCtx.destination);
+        micOn=true;document.getElementById('btnMic').classList.add('active');
+        log('Mic started ('+rate+'Hz)','ok');
+    }catch(e){log('Mic: '+e.message,'er');}
+}
+function stopMic(){
+    if(micStream){micStream.getTracks().forEach(function(t){t.stop()});micStream=null;}
+    if(micProc){micProc.disconnect();micProc=null;}
+    if(micCtx){micCtx.close();micCtx=null;}
+    micOn=false;document.getElementById('btnMic').classList.remove('active');
+    log('Mic stopped');
+}
+function endCall(){stopMic();if(_ws)_ws.close();}
+
+// --- Audio File ---
+document.getElementById('audioFile').onchange=async function(){
+    if(!this.files.length||!_ws||_ws.readyState!==1)return;
+    var f=this.files[0];log('Processing: '+f.name);
+    try{
+        var buf=await f.arrayBuffer(),ctx=new AudioContext(),dec=await ctx.decodeAudioData(buf.slice(0));
+        var native=dec.sampleRate,pcm=dec.getChannelData(0),ratio=native/16000,dsLen=Math.round(pcm.length/ratio),ds=new Float32Array(dsLen);
+        for(var i=0;i<dsLen;i++){var idx=i*ratio,lo=Math.floor(idx),hi=Math.min(lo+1,pcm.length-1),fr=idx-lo;ds[i]=pcm[lo]*(1-fr)+pcm[hi]*fr;}
+        var i16=new Int16Array(ds.length);for(var j=0;j<ds.length;j++)i16[j]=Math.max(-32768,Math.min(32767,Math.round(ds[j]*32768)));
+        var bytes=new Uint8Array(i16.buffer),bin='';for(var j=0;j<bytes.length;j++)bin+=String.fromCharCode(bytes[j]);
+        sentC++;document.getElementById('sSent').textContent=sentC;
+        // Get batch weights
+        var origHandler=_ws.onmessage;
+        _ws.onmessage=function(e){var m=JSON.parse(e.data);if(m.type==='batch_weights'){
+            // Play original audio in sync
+            ctx.decodeAudioData(buf.slice(0)).then(function(pb){var src2=ctx.createBufferSource();src2.buffer=pb;src2.connect(ctx.destination);src2.start();src2.onended=function(){ctx.close();};});
+            playBatch(m);_ws.onmessage=origHandler;log('Playing '+f.name,'ok');
+        }else if(origHandler)origHandler(e);};
+        _ws.send(JSON.stringify({type:'audio.batch',data:btoa(bin),sample_rate:16000,chunk_size:1024}));
+    }catch(e){log('Audio error: '+e.message,'er');}
+    this.value='';
+};
+
+// --- Keepalive ---
+setInterval(function(){if(_ws&&connected)_ws.send(JSON.stringify({type:'ping'}));},15000);
+
+log('Ready. Connect to server, upload avatar, start talking.','ok');
+</script>
+</body>
+</html>

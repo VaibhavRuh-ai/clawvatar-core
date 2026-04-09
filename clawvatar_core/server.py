@@ -9,9 +9,12 @@ from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from clawvatar_core.config import CoreConfig
 from clawvatar_core.session_manager import SessionManager
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,11 @@ def create_app(config: CoreConfig) -> FastAPI:
             await _manager.destroy_all()
 
     return app
+
+
+@app.get("/")
+async def index():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")
