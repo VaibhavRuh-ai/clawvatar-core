@@ -31,27 +31,11 @@ from livekit.agents import (
 
 logger = logging.getLogger(__name__)
 
-# LiveKit credentials from env or Ruh Voice config
 def _load_livekit_creds():
-    """Load LiveKit credentials from env or Ruh Voice .env."""
+    """Load LiveKit credentials from environment variables."""
     url = os.environ.get("LIVEKIT_URL", "")
     key = os.environ.get("LIVEKIT_API_KEY", "")
     secret = os.environ.get("LIVEKIT_API_SECRET", "")
-    if url and key and secret:
-        return url, key, secret
-
-    # Try Ruh Voice config
-    env_path = os.path.expanduser("~/ruh-voice/call-service/.env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("LIVEKIT_URL="):
-                    url = line.split("=", 1)[1]
-                elif line.startswith("LIVEKIT_API_KEY="):
-                    key = line.split("=", 1)[1]
-                elif line.startswith("LIVEKIT_API_SECRET="):
-                    secret = line.split("=", 1)[1]
     return url, key, secret
 
 

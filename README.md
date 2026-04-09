@@ -48,15 +48,17 @@ await adapter.start()
 await adapter.on_agent_speak("vp-manager", audio_bytes, sample_rate=16000)
 ```
 
-### With Ruh Voice (LiveKit)
+### With LiveKit Agent
 
-```python
-from clawvatar_core.adapters.ruh_voice import RuhVoiceAdapter
+```bash
+# Set environment variables
+export LIVEKIT_URL="wss://your-project.livekit.cloud"
+export LIVEKIT_API_KEY="your-key"
+export LIVEKIT_API_SECRET="your-secret"
+export GOOGLE_API_KEY="your-gemini-key"  # or OPENAI_API_KEY
 
-adapter = RuhVoiceAdapter(
-    livekit_url="wss://livekit.ruh.ai",
-    api_key="...",
-    api_secret="...",
+# Start agent
+clawvatar-core agent --provider google
 )
 
 # On call start:

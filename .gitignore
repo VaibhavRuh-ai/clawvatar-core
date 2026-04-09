@@ -11,3 +11,4 @@ venv/
 *.vrm
 *.glb
 clawvatar-core.yaml
+.env

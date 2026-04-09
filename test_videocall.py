@@ -27,16 +27,16 @@ from pathlib import Path
 sys.path.insert(0, "/home/vaibhav/clawvatar-core")
 sys.path.insert(0, "/home/vaibhav/clawvatar-engine")
 
-# Set LiveKit env vars
-env_path = os.path.expanduser("~/ruh-voice/call-service/.env")
+# Set LiveKit env vars — configure via environment or .env file in this directory
+# LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(env_path):
     with open(env_path) as f:
         for line in f:
             line = line.strip()
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                if k.startswith("LIVEKIT_"):
-                    os.environ[k] = v
+                os.environ.setdefault(k, v)
 
 import numpy as np
 import uvicorn
