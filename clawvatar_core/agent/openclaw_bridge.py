@@ -30,10 +30,22 @@ class OpenClawBridge:
         self._adapter = adapter
 
     async def connect(self) -> None:
-        """Connect to OpenClaw gateway."""
+        """Connect to OpenClaw gateway using settings from DB."""
         if self._adapter is None:
-            url, token = OpenClawAdapter.read_config()
-            self._adapter = OpenClawAdapter(gateway_url=url, token=token)
+            # Try DB settings first, then filesystem config
+            try:
+                from clawvatar_core import db
+                url = db.get_setting("openclaw_url")
+                token = db.get_setting("openclaw_token")
+                if url and token:
+                    self._adapter = OpenClawAdapter(gateway_url=url, token=token)
+                else:
+                    url, token = OpenClawAdapter.read_config()
+                    self._adapter = OpenClawAdapter(gateway_url=url, token=token)
+            except Exception:
+                url, token = OpenClawAdapter.read_config()
+                self._adapter = OpenClawAdapter(gateway_url=url, token=token)
+
         await self._adapter.connect()
         logger.info("OpenClaw bridge connected")
 
