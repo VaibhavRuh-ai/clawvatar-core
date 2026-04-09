@@ -1,11 +1,4 @@
-"""Room manager — creates LiveKit rooms and generates tokens for browser clients.
-
-When a user wants to talk to the agent:
-1. Create/get a LiveKit room
-2. Generate a token for the browser to join
-3. Agent worker auto-joins when room is created
-4. Browser joins with WebRTC (voice + receives animation)
-"""
+"""Room manager — creates LiveKit rooms and generates tokens for browser clients."""
 
 from __future__ import annotations
 
@@ -13,7 +6,7 @@ import logging
 import os
 import time
 
-from livekit.api import LiveKitAPI, AccessToken, VideoGrants
+from livekit.api import AccessToken, VideoGrants
 
 logger = logging.getLogger(__name__)
 
@@ -39,25 +32,26 @@ def _load_creds():
 
 
 def generate_token(room_name: str, identity: str = "user", ttl: int = 3600) -> tuple[str, str]:
-    """Generate a LiveKit access token for a participant.
+    """Generate a LiveKit access token.
 
-    Returns:
-        (token, livekit_url)
+    Returns: (jwt_token, livekit_url)
     """
     url, key, secret = _load_creds()
     if not key or not secret:
         raise RuntimeError("LiveKit credentials not found")
 
-    token = AccessToken(api_key=key, api_secret=secret)
-    token.identity = identity
-    token.name = identity
-    token.add_grant(VideoGrants(
-        room_join=True,
-        room=room_name,
-        can_publish=True,
-        can_subscribe=True,
-    ))
-    token.ttl = ttl
+    token = (
+        AccessToken(api_key=key, api_secret=secret)
+        .with_identity(identity)
+        .with_name(identity)
+        .with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+        .with_ttl(ttl)
+    )
 
     jwt = token.to_jwt()
     logger.info(f"Token generated: room={room_name} identity={identity}")
@@ -65,5 +59,4 @@ def generate_token(room_name: str, identity: str = "user", ttl: int = 3600) -> t
 
 
 def create_room_name(prefix: str = "clawvatar") -> str:
-    """Generate a unique room name."""
     return f"{prefix}-{int(time.time())}"
