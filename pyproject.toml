@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clawvatar-core"
+version = "0.1.0"
+description = "Integration bridge for Clawvatar Engine — connects AI agents to animated 3D avatars."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.11"
+authors = [{name = "Ruh AI", email = "vaibhav@ruh.ai"}]
+keywords = ["avatar", "lip-sync", "ai-agent", "video-conferencing", "openclaw"]
+
+dependencies = [
+    "clawvatar-engine @ git+https://github.com/VaibhavRuh-ai/clawvatar-engine.git",
+    "websockets>=12.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.6.0",
+    "pyyaml>=6.0.1",
+    "numpy>=1.26.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+virtual-camera = ["pyvirtualcam>=0.11.0"]
+livekit = ["livekit>=0.13.0"]
+audio-codecs = ["pydub>=0.25.0"]
+video = ["opencv-python-headless>=4.9.0"]
+all = ["clawvatar-core[virtual-camera,livekit,audio-codecs,video]"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.3.0"]
+
+[project.scripts]
+clawvatar-core = "clawvatar_core.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/VaibhavRuh-ai/clawvatar-core"
+Repository = "https://github.com/VaibhavRuh-ai/clawvatar-core"
+
+[tool.setuptools.packages.find]
+include = ["clawvatar_core*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
