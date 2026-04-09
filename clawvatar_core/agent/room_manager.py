@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import time
@@ -50,7 +51,7 @@ def generate_token(room_name: str, identity: str = "user", ttl: int = 3600) -> t
             can_publish=True,
             can_subscribe=True,
         ))
-        .with_ttl(ttl)
+        .with_ttl(datetime.timedelta(seconds=ttl))
     )
 
     jwt = token.to_jwt()
