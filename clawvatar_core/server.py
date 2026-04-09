@@ -118,28 +118,26 @@ async def save_settings(body: dict):
 
 @app.post("/api/openclaw/connect")
 async def openclaw_connect(body: dict = {}):
-    """Connect to OpenClaw and sync agents."""
+    """Connect to OpenClaw gateway."""
     url = body.get("url") or db.get_setting("openclaw_url")
     token = body.get("token") or db.get_setting("openclaw_token")
 
     if not url or not token:
         return {"error": "OpenClaw URL and token required"}
 
-    # Save to DB
     db.set_setting("openclaw_url", url)
     db.set_setting("openclaw_token", token)
+    if body.get("openclaw_base"):
+        db.set_setting("openclaw_base", body["openclaw_base"])
 
     try:
+        global _openclaw
+        _openclaw = None  # force reconnect
         oc = await _get_openclaw()
         if not oc:
             return {"error": "Failed to connect"}
-
         agents = await oc.list_agents()
-        openclaw_base = body.get("openclaw_base", db.get_setting("openclaw_base", os.path.expanduser("~/.openclaw")))
-        db.set_setting("openclaw_base", openclaw_base)
-        db.sync_openclaw_agents(agents, openclaw_base)
-
-        return {"ok": True, "agents": len(agents)}
+        return {"ok": True, "agents_count": len(agents)}
     except Exception as e:
         return {"error": str(e)}
 
@@ -150,45 +148,54 @@ async def openclaw_status():
     return {"connected": connected, "url": db.get_setting("openclaw_url")}
 
 
-# ==================== Agents ====================
+# ==================== Agents (live from OpenClaw) ====================
 
 @app.get("/api/agents")
 async def list_agents_api():
-    return {"agents": db.list_agents()}
+    """Fetch agents LIVE from OpenClaw, merge with avatar assignments."""
+    oc = await _get_openclaw()
+    if not oc:
+        return {"agents": [], "error": "OpenClaw not connected"}
+
+    try:
+        oc_agents = await oc.list_agents()
+    except Exception as e:
+        return {"agents": [], "error": str(e)}
+
+    assignments = db.get_all_assignments()
+    agents = []
+    for a in oc_agents:
+        aid = a.get("id", "")
+        avatar = assignments.get(aid)
+        soul = db.read_soul_md(aid)
+        agents.append({
+            "id": aid,
+            "model": a.get("model", ""),
+            "status": a.get("status", ""),
+            "avatar_id": avatar["avatar_id"] if avatar else None,
+            "avatar_name": avatar["name"] if avatar else None,
+            "avatar_path": avatar["file_path"] if avatar else None,
+            "has_soul": bool(soul),
+        })
+
+    return {"agents": agents}
 
 
-@app.get("/api/agents/{agent_id}")
-async def get_agent_api(agent_id: str):
-    agent = db.get_agent(agent_id)
-    if not agent:
-        return {"error": "Agent not found"}
-    return {"agent": agent}
-
-
-@app.put("/api/agents/{agent_id}")
-async def update_agent_api(agent_id: str, body: dict):
-    existing = db.get_agent(agent_id)
-    if not existing:
-        return {"error": "Agent not found"}
-
-    db.save_agent(
-        agent_id=agent_id,
-        name=body.get("name", existing.get("name", "")),
-        avatar_id=body.get("avatar_id", existing.get("avatar_id", "")),
-        soul_md=existing.get("soul_md", ""),
-        instructions_override=body.get("instructions_override", existing.get("instructions_override", "")),
-        provider=body.get("provider", existing.get("provider", "")),
-        voice=body.get("voice", existing.get("voice", "")),
-        model=body.get("model", existing.get("model", "")),
-        openclaw_agent_id=existing.get("openclaw_agent_id", ""),
-    )
-    return {"ok": True}
-
-
-@app.post("/api/agents/{agent_id}/assign-avatar/{avatar_id}")
-async def assign_avatar_api(agent_id: str, avatar_id: str):
+@app.post("/api/agents/{agent_id}/assign-avatar")
+async def assign_avatar_api(agent_id: str, body: dict):
+    avatar_id = body.get("avatar_id", "")
+    if not avatar_id:
+        db.unassign_avatar(agent_id)
+        return {"ok": True, "action": "unassigned"}
     db.assign_avatar(agent_id, avatar_id)
-    return {"ok": True}
+    return {"ok": True, "action": "assigned"}
+
+
+@app.get("/api/agents/{agent_id}/soul")
+async def get_soul_api(agent_id: str):
+    """Get SOUL.md content for an agent."""
+    soul = db.read_soul_md(agent_id)
+    return {"agent_id": agent_id, "soul_md": soul, "has_soul": bool(soul)}
 
 
 # ==================== Avatars ====================
@@ -213,6 +220,24 @@ async def upload_avatar(file: UploadFile = File(...)):
     db.add_avatar(avatar_id, name, str(save_path), ext.lstrip("."))
 
     return {"avatar_id": avatar_id, "name": name, "path": str(save_path)}
+
+
+@app.get("/api/avatars/{avatar_id}/file")
+async def serve_avatar_file(avatar_id: str):
+    """Serve avatar file for Three.js loading."""
+    info = db.get_avatar(avatar_id)
+    if not info or not Path(info["file_path"]).exists():
+        return JSONResponse({"error": "Avatar file not found"}, status_code=404)
+    return FileResponse(info["file_path"], media_type="application/octet-stream")
+
+
+@app.get("/api/agents/{agent_id}/avatar")
+async def get_agent_avatar_api(agent_id: str):
+    """Get the avatar assigned to an agent."""
+    info = db.get_agent_avatar(agent_id)
+    if not info:
+        return {"agent_id": agent_id, "avatar_id": None}
+    return info
 
 
 @app.delete("/api/avatars/{avatar_id}")

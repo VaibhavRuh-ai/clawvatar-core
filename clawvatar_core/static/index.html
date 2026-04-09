@@ -271,25 +271,45 @@ function updateOcPill(d){
 }
 
 // --- Agents ---
+var _avatarsList=[];
 async function loadAgents(){
     var d=await api('GET','/api/agents');
+    var avd=await api('GET','/api/avatars');
+    _avatarsList=avd.avatars||[];
     var grid=document.getElementById('agentGrid');
     var agents=d.agents||[];
-    if(!agents.length){grid.innerHTML='<div class="card" style="text-align:center;color:var(--muted);padding:40px">No agents. Configure OpenClaw in Settings and click Sync.</div>';return;}
+    if(d.error){grid.innerHTML='<div class="card" style="text-align:center;color:var(--muted);padding:40px">'+d.error+'</div>';return;}
+    if(!agents.length){grid.innerHTML='<div class="card" style="text-align:center;color:var(--muted);padding:40px">No agents found. Connect to OpenClaw in Settings first.</div>';return;}
     grid.innerHTML='';
     agents.forEach(function(a){
         var div=document.createElement('div');
         div.className='agent-card';
-        div.innerHTML='<div class="avatar-badge">'+(a.avatar_name?a.avatar_name[0].toUpperCase():'👤')+'</div>'
-            +'<h3>'+a.name+'</h3>'
+
+        // Avatar select dropdown
+        var opts='<option value="">No avatar</option>';
+        _avatarsList.forEach(function(av){
+            var sel=av.id===a.avatar_id?' selected':'';
+            opts+='<option value="'+av.id+'"'+sel+'>'+av.name+'</option>';
+        });
+
+        div.innerHTML=
+            '<div class="avatar-badge">'+(a.avatar_name?a.avatar_name[0].toUpperCase():'👤')+'</div>'
+            +'<h3>'+a.id+'</h3>'
             +'<div class="meta">'
-            +(a.avatar_name?'Avatar: '+a.avatar_name:'No avatar')+'<br>'
-            +(a.soul_md?'SOUL.md loaded':'No SOUL.md')+'<br>'
-            +(a.provider||'Default provider')
-            +'</div>';
-        div.onclick=function(){startCall(a.id);};
+            +(a.has_soul?'✓ SOUL.md':'✗ No SOUL.md')+'<br>'
+            +(a.model||'—')
+            +'</div>'
+            +'<div style="margin-top:8px">'
+            +'<select onchange="assignAvatar(\''+a.id+'\',this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:10px">'
+            +opts+'</select>'
+            +'</div>'
+            +'<button class="btn btn-accent btn-sm" style="margin-top:6px;width:100%" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>';
         grid.appendChild(div);
     });
+}
+async function assignAvatar(agentId,avatarId){
+    await api('POST','/api/agents/'+agentId+'/assign-avatar',{avatar_id:avatarId});
+    loadAgents();
 }
 async function syncAgents(){
     var d=await api('POST','/api/openclaw/connect');
@@ -321,18 +341,24 @@ document.getElementById('avatarUpload').onchange=async function(){
 // --- Call ---
 async function startCall(agentId){
     currentAgent=agentId;
-    var agent=await api('GET','/api/agents/'+agentId);
-    agent=agent.agent||{};
-    document.getElementById('callAgentName').textContent=agent.name||agentId;
+    document.getElementById('callAgentName').textContent=agentId;
     document.getElementById('callMeta').textContent='Connecting...';
     document.getElementById('transcript').innerHTML='';
     showPage('call');
     setTimeout(function(){window.resizeRenderer();},100);
 
-    // Load avatar if assigned
-    if(agent.avatar_path){
-        var url=URL.createObjectURL(await(await fetch(agent.avatar_path)).blob());
-        window.loadAvatar(url);
+    // Load assigned avatar
+    var avInfo=await api('GET','/api/agents/'+agentId+'/avatar');
+    if(avInfo&&avInfo.file_path){
+        // Upload as blob URL for Three.js
+        try{
+            var resp=await fetch('/api/avatars/'+avInfo.avatar_id+'/file');
+            if(resp.ok){
+                var blob=await resp.blob();
+                window.loadAvatar(URL.createObjectURL(blob));
+                addTranscript('Avatar loaded: '+avInfo.name,'sys');
+            }
+        }catch(e){}
     }
 
     // Connect animation WebSocket
