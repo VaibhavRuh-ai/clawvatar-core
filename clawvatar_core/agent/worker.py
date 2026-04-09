@@ -84,8 +84,8 @@ class ClawvatarAgentWorker:
                 instructions=self.instructions,
             )
         elif self.provider == "google":
-            from livekit.plugins.google import beta as google_beta
-            return google_beta.RealtimeModel(
+            from livekit.plugins.google.realtime import RealtimeModel as GoogleRealtimeModel
+            return GoogleRealtimeModel(
                 model=self.model_name or "gemini-2.0-flash-exp",
                 voice=self.voice or "Puck",
                 instructions=self.instructions,
