@@ -148,9 +148,14 @@ async def ws_endpoint(ws: WebSocket):
                     oc = await get_openclaw()
                     result = await oc.send_to_agent(agent_id, user_text, timeout=30)
                     agent_text = result.get("text", "")
+                    agent_error = result.get("error", "")
+
+                    if agent_error:
+                        await ws.send_json({"type": "error", "message": f"Agent error: {agent_error}"})
+                        continue
 
                     if not agent_text:
-                        await ws.send_json({"type": "agent.text", "text": "(no response from agent)"})
+                        await ws.send_json({"type": "error", "message": "No response from agent"})
                         continue
 
                     await ws.send_json({"type": "agent.text", "text": agent_text, "agent": agent_id})

@@ -124,44 +124,63 @@ class OpenClawAdapter:
         req_id = self._make_id()
         self._response_collectors[req_id] = []
 
-        # Send message
+        # Send message (key format: "agent:<agent_id>:<scope>")
+        key = f"agent:{agent_id}:{scope}"
         await self._request("sessions.send", {
-            "agent": agent_id,
+            "key": key,
             "message": message,
-            "scope": scope,
         }, req_id=req_id)
 
         # Collect streaming response events
         collected_text = []
+        seen_count = 0
+        error_msg = ""
         end_time = asyncio.get_event_loop().time() + timeout
 
         while asyncio.get_event_loop().time() < end_time:
             events = self._response_collectors.get(req_id, [])
-            new_events = events[len(collected_text):]
+            new_events = events[seen_count:]
+            seen_count = len(events)
 
             for evt in new_events:
                 evt_type = evt.get("event", "")
                 payload = evt.get("payload", {})
+                data = payload.get("data", {})
+                stream = payload.get("stream", "")
 
-                # Collect text from various event types
-                if "text" in payload:
-                    collected_text.append(payload["text"])
-                elif "content" in payload:
-                    collected_text.append(payload["content"])
-                elif "delta" in payload:
-                    collected_text.append(payload["delta"])
+                # Agent text streaming (OpenClaw format)
+                if evt_type == "agent" and stream == "text":
+                    delta = data.get("delta", "") if isinstance(data, dict) else ""
+                    if delta:
+                        collected_text.append(delta)
 
-                # Check for completion events
-                if evt_type in ("session.complete", "turn.complete", "response.done"):
+                # Chat message with text
+                if evt_type == "chat" and payload.get("state") == "complete":
                     text = "".join(collected_text).strip()
                     del self._response_collectors[req_id]
                     return {"text": text, "agent_id": agent_id, "events": events}
+
+                # Lifecycle end = done
+                if evt_type == "agent" and stream == "lifecycle":
+                    phase = data.get("phase", "") if isinstance(data, dict) else ""
+                    if phase == "end":
+                        text = "".join(collected_text).strip()
+                        del self._response_collectors[req_id]
+                        return {"text": text, "agent_id": agent_id, "events": events}
+                    elif phase == "error":
+                        error_msg = data.get("error", "Agent error") if isinstance(data, dict) else "Agent error"
+
+                # Fallback text fields
+                if "text" in payload:
+                    collected_text.append(payload["text"])
 
             await asyncio.sleep(0.1)
 
         # Timeout — return what we have
         text = "".join(collected_text).strip()
         self._response_collectors.pop(req_id, None)
+        if not text and error_msg:
+            return {"text": "", "error": error_msg, "agent_id": agent_id, "events": []}
         return {"text": text or "(no response)", "agent_id": agent_id, "events": []}
 
     async def _request(self, method: str, params: dict, req_id: str = None) -> dict:
