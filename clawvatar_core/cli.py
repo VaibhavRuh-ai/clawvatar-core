@@ -30,6 +30,18 @@ def main():
     ad.add_argument("agent_id")
     ad.add_argument("avatar_id")
 
+    # agent
+    ag = sub.add_parser("agent", help="Start LiveKit agent with avatar")
+    ag.add_argument("--provider", default="openai", choices=["openai", "google"], help="Realtime LLM provider")
+    ag.add_argument("--model", default="", help="Model name (auto-selects default)")
+    ag.add_argument("--voice", default="", help="Voice name")
+    ag.add_argument("--instructions", default="", help="System instructions for the agent")
+    ag.add_argument("--avatar", default="", help="Path to VRM avatar file")
+    ag.add_argument("--openclaw", action="store_true", help="Enable OpenClaw task delegation")
+    ag.add_argument("--livekit-url", default="", help="LiveKit server URL")
+    ag.add_argument("--api-key", default="", help="LiveKit API key")
+    ag.add_argument("--api-secret", default="", help="LiveKit API secret")
+
     # init
     sub.add_parser("init", help="Create default config file")
 
@@ -38,6 +50,8 @@ def main():
 
     if args.command == "serve":
         _serve(args)
+    elif args.command == "agent":
+        _agent(args)
     elif args.command == "avatars":
         _avatars(args)
     elif args.command == "init":
@@ -70,6 +84,23 @@ def _serve(args):
         kw["ssl_certfile"] = config.server.ssl_cert
         kw["ssl_keyfile"] = config.server.ssl_key
     uvicorn.run("clawvatar_core.server:app", **kw)
+
+
+def _agent(args):
+    from clawvatar_core.agent.worker import ClawvatarAgentWorker
+
+    worker = ClawvatarAgentWorker(
+        provider=args.provider,
+        model=args.model,
+        voice=args.voice,
+        instructions=args.instructions or "You are a helpful AI assistant. Be concise and friendly.",
+        avatar_path=args.avatar,
+        openclaw_enabled=args.openclaw,
+        livekit_url=args.livekit_url,
+        livekit_api_key=args.api_key,
+        livekit_api_secret=args.api_secret,
+    )
+    worker.run()
 
 
 def _avatars(args):

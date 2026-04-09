@@ -21,14 +21,16 @@ dependencies = [
     "pyyaml>=6.0.1",
     "numpy>=1.26.0",
     "python-multipart>=0.0.9",
+    "livekit-agents>=1.5.0",
 ]
 
 [project.optional-dependencies]
+openai = ["livekit-plugins-openai>=1.5.0"]
+google = ["livekit-plugins-google>=1.5.0"]
 virtual-camera = ["pyvirtualcam>=0.11.0"]
-livekit = ["livekit>=0.13.0"]
 audio-codecs = ["pydub>=0.25.0"]
 video = ["opencv-python-headless>=4.9.0"]
-all = ["clawvatar-core[virtual-camera,livekit,audio-codecs,video]"]
+all = ["clawvatar-core[openai,google,virtual-camera,audio-codecs,video]"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0", "ruff>=0.3.0"]
 
 [project.scripts]

@@ -1,4 +1,4 @@
-"""Clawvatar Core — integration bridge for AI agent avatars."""
+"""Clawvatar Core — AI agent avatar integration with LiveKit, OpenClaw, and real-time voice."""
 
 __version__ = "0.1.0"
 
