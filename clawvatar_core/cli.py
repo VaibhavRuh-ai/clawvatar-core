@@ -1,63 +1,52 @@
-"""CLI for clawvatar-core."""
+"""Clawvatar Core CLI.
+
+Usage:
+    clawvatar-core serve                    # Start the server
+    clawvatar-core serve --port 8766        # Custom port
+    clawvatar-core agent --provider google  # Start LiveKit agent worker
+"""
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="clawvatar-core", description="Clawvatar Core — AI agent avatar integration")
+    parser = argparse.ArgumentParser(prog="clawvatar-core", description="Clawvatar Core — AI agent avatar system")
     sub = parser.add_subparsers(dest="command")
 
     # serve
-    s = sub.add_parser("serve", help="Start the core server")
-    s.add_argument("-c", "--config", default="clawvatar-core.yaml")
-    s.add_argument("--host", default=None)
-    s.add_argument("--port", type=int, default=None)
-    s.add_argument("--ssl-cert", default=None)
-    s.add_argument("--ssl-key", default=None)
-
-    # avatars
-    a = sub.add_parser("avatars", help="Manage avatars")
-    asub = a.add_subparsers(dest="avatar_cmd")
-    asub.add_parser("list", help="List all avatars")
-    aa = asub.add_parser("add", help="Add an avatar")
-    aa.add_argument("file", help="VRM/GLB file path")
-    aa.add_argument("--name", default="")
-    ad = asub.add_parser("assign", help="Assign avatar to agent")
-    ad.add_argument("agent_id")
-    ad.add_argument("avatar_id")
+    s = sub.add_parser("serve", help="Start the web server")
+    s.add_argument("--host", default="0.0.0.0")
+    s.add_argument("--port", type=int, default=8766)
+    s.add_argument("--ssl-cert", default="")
+    s.add_argument("--ssl-key", default="")
 
     # agent
-    ag = sub.add_parser("agent", help="Start LiveKit agent with avatar")
-    ag.add_argument("--provider", default="openai", choices=["openai", "google"], help="Realtime LLM provider")
-    ag.add_argument("--model", default="", help="Model name (auto-selects default)")
-    ag.add_argument("--voice", default="", help="Voice name")
-    ag.add_argument("--instructions", default="", help="System instructions for the agent")
-    ag.add_argument("--avatar", default="", help="Path to VRM avatar file")
-    ag.add_argument("--openclaw", action="store_true", help="Enable OpenClaw task delegation")
-    ag.add_argument("--livekit-url", default="", help="LiveKit server URL")
-    ag.add_argument("--api-key", default="", help="LiveKit API key")
-    ag.add_argument("--api-secret", default="", help="LiveKit API secret")
-
-    # init
-    sub.add_parser("init", help="Create default config file")
+    a = sub.add_parser("agent", help="Start LiveKit agent worker")
+    a.add_argument("--provider", default="google", choices=["openai", "google"])
+    a.add_argument("--agent-id", default="", help="Agent ID to load SOUL.md from DB")
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+
+    # Load .env if present
+    env_path = os.path.join(os.getcwd(), ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
 
     if args.command == "serve":
         _serve(args)
     elif args.command == "agent":
         _agent(args)
-    elif args.command == "avatars":
-        _avatars(args)
-    elif args.command == "init":
-        from clawvatar_core.config import CoreConfig
-        CoreConfig().to_yaml("clawvatar-core.yaml")
-        print("Config written to clawvatar-core.yaml")
     else:
         parser.print_help()
         sys.exit(1)
@@ -65,59 +54,44 @@ def main():
 
 def _serve(args):
     import uvicorn
-    from clawvatar_core.config import CoreConfig
-    from clawvatar_core.server import create_app
-
-    config = CoreConfig.from_yaml(args.config)
-    if args.host:
-        config.server.host = args.host
-    if args.port:
-        config.server.port = args.port
-    if args.ssl_cert:
-        config.server.ssl_cert = args.ssl_cert
-    if args.ssl_key:
-        config.server.ssl_key = args.ssl_key
-
-    create_app(config)
-    kw = {"host": config.server.host, "port": config.server.port, "log_level": "info"}
-    if config.server.ssl_cert and config.server.ssl_key:
-        kw["ssl_certfile"] = config.server.ssl_cert
-        kw["ssl_keyfile"] = config.server.ssl_key
+    kw = {"host": args.host, "port": args.port, "log_level": "info"}
+    if args.ssl_cert and args.ssl_key:
+        kw["ssl_certfile"] = args.ssl_cert
+        kw["ssl_keyfile"] = args.ssl_key
     uvicorn.run("clawvatar_core.server:app", **kw)
 
 
 def _agent(args):
-    from clawvatar_core.agent.worker import ClawvatarAgentWorker
+    from clawvatar_core import db
 
+    # Load settings from DB into env
+    settings = db.get_all_settings()
+    for key in ["livekit_url", "livekit_api_key", "livekit_api_secret", "google_api_key", "openai_api_key"]:
+        val = settings.get(key, "")
+        if val:
+            os.environ.setdefault(key.upper(), val)
+
+    # Get agent instructions from DB (SOUL.md)
+    instructions = "You are a helpful AI assistant."
+    if args.agent_id:
+        agent = db.get_agent(args.agent_id)
+        if agent:
+            soul = agent.get("soul_md", "")
+            override = agent.get("instructions_override", "")
+            if override:
+                instructions = override
+            elif soul:
+                # Use first 2000 chars of SOUL.md as instructions
+                instructions = f"You are the {args.agent_id} agent. Follow your role:\n\n{soul[:2000]}"
+            if agent.get("provider"):
+                args.provider = agent["provider"]
+
+    from clawvatar_core.agent.worker import ClawvatarAgentWorker
     worker = ClawvatarAgentWorker(
         provider=args.provider,
-        model=args.model,
-        voice=args.voice,
-        instructions=args.instructions or "You are a helpful AI assistant. Be concise and friendly.",
-        avatar_path=args.avatar,
-        openclaw_enabled=args.openclaw,
-        livekit_url=args.livekit_url,
-        livekit_api_key=args.api_key,
-        livekit_api_secret=args.api_secret,
+        instructions=instructions,
     )
     worker.run()
-
-
-def _avatars(args):
-    from clawvatar_core.avatar.store import AvatarStore
-    store = AvatarStore()
-
-    if args.avatar_cmd == "list":
-        for a in store.list():
-            print(f"  {a['id']}  {a['name']}  {a['path']}")
-    elif args.avatar_cmd == "add":
-        aid = store.add(args.file, name=args.name)
-        print(f"Added: {aid}")
-    elif args.avatar_cmd == "assign":
-        store.assign(args.agent_id, args.avatar_id)
-        print(f"Assigned {args.avatar_id} → {args.agent_id}")
-    else:
-        print("Use: clawvatar-core avatars list|add|assign")
 
 
 if __name__ == "__main__":

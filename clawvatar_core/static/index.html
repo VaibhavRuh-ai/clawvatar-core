@@ -5,93 +5,160 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Clawvatar</title>
 <style>
-:root{--bg:#08080e;--bg2:#10101a;--bg3:#1a1a28;--border:#1a1a2a;--text:#ddd;--muted:#666;--accent:#7c6ef0;--green:#4ade80;--red:#f66;--blue:#60a5fa}
+:root{--bg:#08080e;--bg2:#10101a;--bg3:#1a1a28;--border:#222;--text:#ddd;--muted:#666;--accent:#7c6ef0;--green:#4ade80;--red:#f66;--blue:#60a5fa}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
-.top{background:var(--bg2);padding:8px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);height:44px}
-.top h1{font-size:14px;color:#fff;font-weight:700}.top h1 b{color:var(--accent)}
-.top .spacer{flex:1}
-.pill{font-size:9px;padding:2px 8px;border-radius:8px;font-weight:600}
+body{font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+
+/* Layout */
+.app{height:100vh;display:flex;flex-direction:column}
+.topbar{background:var(--bg2);padding:8px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);height:44px}
+.topbar h1{font-size:14px;color:#fff;font-weight:700}.topbar h1 b{color:var(--accent)}
+.topbar .spacer{flex:1}
+.pill{font-size:9px;padding:2px 8px;border-radius:8px;font-weight:600;cursor:default}
 .pill.off{background:#2a1515;color:var(--red)}.pill.on{background:#152a15;color:var(--green)}.pill.info{background:#15152a;color:var(--blue)}
-.main{flex:1;display:flex;overflow:hidden}
-#view{flex:1;background:#0a0a12;position:relative;min-width:0}
-canvas{width:100%;height:100%;display:block}
+nav{display:flex;gap:2px;margin-left:16px}
+nav a{padding:6px 14px;font-size:11px;color:var(--muted);text-decoration:none;border-radius:6px;font-weight:600;cursor:pointer}
+nav a.active{background:var(--bg3);color:var(--text)}
+nav a:hover{color:var(--text)}
+
+.content{flex:1;overflow-y:auto;padding:20px}
+
+/* Cards */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.card h2{font-size:13px;font-weight:700;margin-bottom:12px;color:var(--accent)}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;outline:none;font-family:inherit}
+.field input:focus,.field textarea:focus{border-color:var(--accent)}
+.btn{padding:10px 20px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;display:inline-block}
+.btn-accent{background:var(--accent)}.btn-green{background:#22663a}.btn-red{background:#662230}
+.btn-sm{padding:6px 12px;font-size:11px}
+.btn+.btn{margin-left:6px}
+
+/* Agent grid */
+.agent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.agent-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .15s}
+.agent-card:hover{border-color:var(--accent)}
+.agent-card h3{font-size:13px;margin-bottom:6px}
+.agent-card .meta{font-size:10px;color:var(--muted);line-height:1.6}
+.agent-card .avatar-badge{width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px;float:right}
+
+/* Call screen */
+.call-layout{display:flex;height:calc(100vh - 44px);overflow:hidden}
+.call-viewport{flex:1;position:relative;background:#0a0a12}
+.call-viewport canvas{width:100%;height:100%;display:block}
+.call-sidebar{width:340px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column}
+.call-info{padding:12px;border-bottom:1px solid var(--border)}
+.call-info h3{font-size:13px;margin-bottom:4px}
+.call-info .meta{font-size:10px;color:var(--muted)}
+.transcript{flex:1;overflow-y:auto;padding:12px}
+.transcript .msg{padding:6px 10px;border-radius:8px;margin-bottom:6px;font-size:12px;max-width:85%}
+.transcript .user{background:#2a2a44;margin-left:auto;text-align:right;border-bottom-right-radius:2px}
+.transcript .agent{background:#1a2a1a;border-bottom-left-radius:2px}
+.transcript .sys{color:var(--muted);font-size:10px;text-align:center}
+.call-controls{padding:12px;border-top:1px solid var(--border);display:flex;justify-content:center;gap:10px}
+.cbtn{width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cbtn svg{width:20px;height:20px;fill:#fff}
+.cbtn.call{background:var(--green)}.cbtn.end{background:var(--red)}.cbtn.mic{background:#333}
+.cbtn.mic.muted{background:var(--red)}
 .hud{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:6px;font:10px/1.6 monospace;color:#555;pointer-events:none}
 .hud b{color:var(--green)}
-.call-bar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center}
-.cbtn{width:50px;height:50px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.cbtn:hover{transform:scale(1.08)}
-.cbtn svg{width:22px;height:22px;fill:#fff}
-.cbtn.join{background:var(--green)}.cbtn.mic{background:#333}.cbtn.mic.on{background:var(--red)}.cbtn.end{background:var(--red)}
-.side{width:360px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column}
-.setup{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1}
-.field label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
-.field select,.field input[type=text],.field input[type=password]{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px;outline:none}
-.btn{padding:10px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;width:100%;margin-top:4px}
-.btn-accent{background:var(--accent)}.btn-green{background:#22663a}
-input[type=file]{display:none}
-.upload-zone{border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;color:var(--muted);font-size:11px}
+
+/* Upload */
+.upload-zone{border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;color:var(--muted);font-size:11px}
 .upload-zone:hover{border-color:var(--accent)}
-.log-area{border-top:1px solid var(--border);max-height:160px;overflow-y:auto;padding:8px 12px}
-.log-area div{font:10px/1.7 monospace;color:#444}
-.log-area .ok{color:var(--green)}.log-area .er{color:var(--red)}
-.status{font-size:10px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--border);line-height:1.8}
-.status b{color:var(--text)}
+input[type=file]{display:none}
+
+/* Status */
+.status-row{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.status-row .k{color:var(--muted)}.status-row .v{color:var(--text)}
+
+/* Hidden pages */
+.page{display:none}.page.active{display:block}
+.call-page{display:none}.call-page.active{display:flex}
 </style>
 </head>
 <body>
-<div class="top">
-    <h1><b>Claw</b>vatar</h1>
-    <div class="spacer"></div>
-    <span id="pLk" class="pill off">LiveKit</span>
-    <span id="pAv" class="pill off">Avatar</span>
-</div>
-<div class="main">
-    <div id="view">
-        <canvas id="c"></canvas>
-        <div class="hud"><b>FPS</b> <span id="hFps">0</span> &nbsp;<b>Viseme</b> <span id="hVis">-</span></div>
-        <div class="call-bar">
-            <button class="cbtn join" id="btnJoin" onclick="joinCall()" title="Join call">
-                <svg viewBox="0 0 24 24"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>
-            </button>
-            <button class="cbtn mic" id="btnMic" onclick="toggleMic()" title="Mute/unmute" style="display:none">
-                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-            </button>
-            <button class="cbtn end" id="btnEnd" onclick="endCall()" title="End call" style="display:none">
-                <svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.67-1.85.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
-            </button>
-        </div>
+<div class="app">
+    <div class="topbar">
+        <h1><b>Claw</b>vatar</h1>
+        <nav>
+            <a class="active" onclick="showPage('dashboard')">Dashboard</a>
+            <a onclick="showPage('settings')">Settings</a>
+        </nav>
+        <div class="spacer"></div>
+        <span id="pOc" class="pill off">OpenClaw</span>
     </div>
-    <div class="side">
-        <div class="setup">
-            <div class="field">
-                <label>Avatar</label>
-                <div class="upload-zone" onclick="document.getElementById('fi').click()">Click to upload .vrm avatar</div>
-                <input type="file" id="fi" accept=".vrm,.glb">
-                <div id="avName" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
-            </div>
-            <div class="field">
-                <label>Provider</label>
-                <select id="provider">
-                    <option value="openai">OpenAI Realtime</option>
-                    <option value="google">Gemini Live</option>
-                </select>
-            </div>
-            <div class="field">
-                <label>Instructions</label>
-                <input type="text" id="instructions" value="You are a helpful AI assistant. Be concise and friendly." placeholder="System prompt...">
+
+    <!-- Dashboard -->
+    <div class="content page active" id="page-dashboard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2 style="font-size:16px">Agents</h2>
+            <button class="btn btn-accent btn-sm" onclick="syncAgents()">Sync from OpenClaw</button>
+        </div>
+        <div class="agent-grid" id="agentGrid">
+            <div class="card" style="text-align:center;color:var(--muted);padding:40px">
+                Configure OpenClaw in Settings to discover agents.
             </div>
         </div>
-        <div class="status" id="statusBar">
-            <b>Room:</b> <span id="sRoom">-</span><br>
-            <b>State:</b> <span id="sState">idle</span><br>
-            <b>Agent:</b> <span id="sAgent">not connected</span>
+
+        <h2 style="font-size:16px;margin:24px 0 12px">Avatars</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap" id="avatarGrid"></div>
+        <div class="upload-zone" style="margin-top:8px;max-width:300px" onclick="document.getElementById('avatarUpload').click()">
+            Upload .vrm avatar
         </div>
-        <div class="log-area" id="log"></div>
+        <input type="file" id="avatarUpload" accept=".vrm,.glb">
+    </div>
+
+    <!-- Settings -->
+    <div class="content page" id="page-settings">
+        <div class="card" style="max-width:500px">
+            <h2>LiveKit</h2>
+            <div class="field"><label>URL</label><input id="s_livekit_url" placeholder="wss://your-project.livekit.cloud"></div>
+            <div class="field"><label>API Key</label><input id="s_livekit_api_key" placeholder="API..."></div>
+            <div class="field"><label>API Secret</label><input id="s_livekit_api_secret" type="password" placeholder="secret..."></div>
+        </div>
+        <div class="card" style="max-width:500px">
+            <h2>LLM Provider</h2>
+            <div class="field"><label>Google (Gemini) API Key</label><input id="s_google_api_key" placeholder="AIza..."></div>
+            <div class="field"><label>OpenAI API Key (optional)</label><input id="s_openai_api_key" placeholder="sk-..."></div>
+        </div>
+        <div class="card" style="max-width:500px">
+            <h2>OpenClaw</h2>
+            <div class="field"><label>Gateway URL</label><input id="s_openclaw_url" placeholder="ws://localhost:18789/ws"></div>
+            <div class="field"><label>Token</label><input id="s_openclaw_token" type="password" placeholder="gateway auth token"></div>
+            <div class="field"><label>Base Path</label><input id="s_openclaw_base" placeholder="~/.openclaw (for SOUL.md files)"></div>
+        </div>
+        <button class="btn btn-accent" onclick="saveSettings()">Save Settings</button>
+        <button class="btn btn-green" onclick="testOpenClaw()" style="margin-left:8px">Test OpenClaw Connection</button>
+        <div id="settingsMsg" style="margin-top:8px;font-size:11px"></div>
+    </div>
+
+    <!-- Call Screen (hidden, shown when call starts) -->
+    <div class="call-page" id="page-call">
+        <div class="call-viewport">
+            <canvas id="c"></canvas>
+            <div class="hud"><b>FPS</b> <span id="hFps">0</span> <b>Viseme</b> <span id="hVis">-</span></div>
+        </div>
+        <div class="call-sidebar">
+            <div class="call-info">
+                <h3 id="callAgentName">Agent</h3>
+                <div class="meta" id="callMeta">Ready</div>
+            </div>
+            <div class="transcript" id="transcript"></div>
+            <div class="call-controls">
+                <button class="cbtn mic" id="btnMic" onclick="toggleMic()">
+                    <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                </button>
+                <button class="cbtn end" onclick="endCall()">
+                    <svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.67-1.85.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- LiveKit client SDK -->
+<!-- LiveKit SDK -->
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.js"></script>
 
 <!-- Three.js -->
@@ -104,22 +171,31 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 let VLP;try{VLP=(await import('https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.1/lib/three-vrm.module.min.js')).VRMLoaderPlugin;}catch(e){}
 
-const R=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+const cv=document.getElementById('c');
+const R=new THREE.WebGLRenderer({canvas:cv,antialias:true});
 R.setPixelRatio(Math.min(devicePixelRatio,2));R.outputColorSpace=THREE.SRGBColorSpace;R.toneMapping=THREE.ACESFilmicToneMapping;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x0a0a12);
 const cam=new THREE.PerspectiveCamera(20,1,.01,100);cam.position.set(0,1.35,.9);
-const ctrl=new OrbitControls(cam,R.domElement);ctrl.target.set(0,1.3,0);ctrl.enableDamping=true;ctrl.update();
+const ctrl=new OrbitControls(cam,cv);ctrl.target.set(0,1.3,0);ctrl.enableDamping=true;ctrl.update();
 scene.add(new THREE.AmbientLight(0xffffff,.8));
 scene.add(new THREE.DirectionalLight(0xffffff,1.2)).position.set(2,3,2);
 scene.add(new THREE.DirectionalLight(0x8888ff,.4)).position.set(-2,1,-1);
 const ldr=new GLTFLoader();if(VLP)ldr.register(p=>new VLP(p));
-function rsz(){const v=document.getElementById('view');R.setSize(v.clientWidth,v.clientHeight);cam.aspect=v.clientWidth/v.clientHeight;cam.updateProjectionMatrix();}
-addEventListener('resize',rsz);rsz();
 
 let vrm=null,clk=new THREE.Clock(),curW={},tgtW={},curH={y:0,p:0,r:0},tgtH={y:0,p:0,r:0},hb=null;
 const NM={'blendShape2.mouth_a':'aa','blendShape2.mouth_i':'ih','blendShape2.mouth_u':'ou','blendShape2.mouth_e':'ee','blendShape2.mouth_o':'oh','blendShape2.Blink_L':'blinkLeft','blendShape2.Blink_R':'blinkRight','blendShape2.happy':'happy','blendShape2.angry':'angry','blendShape2.sorrow':'sad','blendShape2.joy':'surprised','happy':'happy','sad':'sad','relaxed':'relaxed','surprised':'surprised','blinkLeft':'blinkLeft','blinkRight':'blinkRight'};
 function lerp(a,b,t){return a+(b-a)*t}
 let fc=0,ft=performance.now();
+
+function rsz(){
+    const vp=document.querySelector('.call-viewport');
+    if(!vp||!vp.offsetWidth)return;
+    R.setSize(vp.clientWidth,vp.clientHeight);
+    cam.aspect=vp.clientWidth/vp.clientHeight;
+    cam.updateProjectionMatrix();
+}
+addEventListener('resize',rsz);
+
 function anim(){
     requestAnimationFrame(anim);ctrl.update();
     for(const k of new Set([...Object.keys(curW),...Object.keys(tgtW)])){const c=curW[k]||0,t=tgtW[k]||0,v=lerp(c,t,.25);if(v>.003)curW[k]=v;else delete curW[k];}
@@ -129,142 +205,222 @@ function anim(){
 }
 anim();
 
-// Avatar upload
-document.getElementById('fi').onchange=async function(){
-    if(!this.files.length)return;const f=this.files[0],u=URL.createObjectURL(f);
+window.loadAvatar=async function(path){
     if(vrm){scene.remove(vrm.scene);vrm=null;hb=null;}
-    try{const g=await ldr.loadAsync(u);vrm=g.userData.vrm;if(vrm){scene.add(vrm.scene);cam.position.set(0,1.35,.9);ctrl.target.set(0,1.3,0);ctrl.update();try{const h=vrm.humanoid;if(h){const la=h.getNormalizedBoneNode('leftUpperArm'),ra=h.getNormalizedBoneNode('rightUpperArm');if(la)la.rotation.z=1.2;if(ra)ra.rotation.z=-1.2;hb=h.getNormalizedBoneNode('head');}}catch(e){}
-    document.getElementById('avName').textContent=f.name;document.getElementById('pAv').className='pill on';document.getElementById('pAv').textContent='Avatar';
-    log('Avatar: '+f.name,'ok');
-    const fd=new FormData();fd.append('file',f);fetch(location.protocol+'//'+location.host+'/upload',{method:'POST',body:fd}).catch(function(){});
-    }}catch(e){log('Error: '+e.message,'er');}
-    URL.revokeObjectURL(u);this.value='';
+    try{
+        const g=await ldr.loadAsync(path);vrm=g.userData.vrm;
+        if(vrm){scene.add(vrm.scene);cam.position.set(0,1.35,.9);ctrl.target.set(0,1.3,0);ctrl.update();
+        try{const h=vrm.humanoid;if(h){const la=h.getNormalizedBoneNode('leftUpperArm'),ra=h.getNormalizedBoneNode('rightUpperArm');if(la)la.rotation.z=1.2;if(ra)ra.rotation.z=-1.2;hb=h.getNormalizedBoneNode('head');}}catch(e){}}
+    }catch(e){console.error('Avatar load error:',e);}
 };
-
-window._setTgt=function(w,h){tgtW=w;tgtH=h;};
+window.setAnimTarget=function(w,h){tgtW=w;tgtH=h;};
+window.resizeRenderer=rsz;
 </script>
 
 <script>
-// === LiveKit Voice + Animation ===
-var lkRoom=null,lkConnected=false,micEnabled=true;
-var _ws=null;
+// ===================== APP LOGIC =====================
+var animWs=null,lkRoom=null,micOn=true,currentAgent=null;
 
-function log(m,c){var d=document.createElement('div');d.className=c||'';d.textContent=new Date().toLocaleTimeString()+' '+m;var b=document.getElementById('log');b.appendChild(d);b.scrollTop=99999;}
-
-// Connect animation WebSocket
-function connectWS(){
-    var p=location.protocol==='https:'?'wss:':'ws:';
-    _ws=new WebSocket(p+'//'+location.host+'/ws');
-    _ws.onopen=function(){log('Animation server connected','ok');};
-    _ws.onclose=function(){setTimeout(connectWS,3000);};
-    _ws.onmessage=function(e){
-        try{var m=JSON.parse(e.data);
-        if(m.type==='weights'){
-            window._setTgt(m.weights||{},{y:(m.head&&m.head.yaw)||0,p:(m.head&&m.head.pitch)||0,r:(m.head&&m.head.roll)||0});
-            if(m.viseme)document.getElementById('hVis').textContent=m.viseme;
-        }else if(m.type==='avatar.ready'){log('Avatar ready: '+(m.info&&m.info.name),'ok');}
-        else if(m.type==='error'){log('Error: '+m.message,'er');}
-        }catch(err){}
-    };
-    setInterval(function(){if(_ws&&_ws.readyState===1)_ws.send(JSON.stringify({type:'ping'}));},15000);
+// --- Pages ---
+function showPage(name){
+    document.querySelectorAll('.page,.call-page').forEach(function(p){p.classList.remove('active')});
+    document.getElementById('page-'+name).classList.add('active');
+    document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('active',a.textContent.toLowerCase()===name)});
+    if(name==='call')window.resizeRenderer();
 }
-connectWS();
 
-// Join LiveKit call
-async function joinCall(){
-    log('Requesting token...');
+// --- API helpers ---
+async function api(method,path,body){
+    var opts={method:method,headers:{'Content-Type':'application/json'}};
+    if(body)opts.body=JSON.stringify(body);
+    var r=await fetch(path,opts);
+    return r.json();
+}
+
+// --- Settings ---
+async function loadSettings(){
+    var d=await api('GET','/api/settings');
+    var s=d.settings||{};
+    document.getElementById('s_livekit_url').value=s.livekit_url||'';
+    document.getElementById('s_livekit_api_key').value=s.livekit_api_key||'';
+    document.getElementById('s_openclaw_url').value=s.openclaw_url||'';
+    document.getElementById('s_openclaw_base').value=s.openclaw_base||'~/.openclaw';
+    // Don't show masked secrets in inputs
+    updateOcPill(d);
+}
+async function saveSettings(){
+    var body={};
+    ['livekit_url','livekit_api_key','livekit_api_secret','google_api_key','openai_api_key','openclaw_url','openclaw_token','openclaw_base'].forEach(function(k){
+        var el=document.getElementById('s_'+k);
+        if(el&&el.value&&!el.value.includes('...'))body[k]=el.value;
+    });
+    var d=await api('POST','/api/settings',body);
+    document.getElementById('settingsMsg').textContent=d.ok?'Saved!':'Error: '+(d.error||'unknown');
+    document.getElementById('settingsMsg').style.color=d.ok?'var(--green)':'var(--red)';
+}
+async function testOpenClaw(){
+    document.getElementById('settingsMsg').textContent='Connecting...';
+    var d=await api('POST','/api/openclaw/connect');
+    document.getElementById('settingsMsg').textContent=d.ok?'Connected! '+d.agents+' agents synced.':'Error: '+(d.error||'failed');
+    document.getElementById('settingsMsg').style.color=d.ok?'var(--green)':'var(--red)';
+    if(d.ok){loadAgents();updateOcPill({connected:true});}
+}
+function updateOcPill(d){
+    var p=document.getElementById('pOc');
+    if(d&&d.connected){p.className='pill on';p.textContent='OpenClaw';}
+}
+
+// --- Agents ---
+async function loadAgents(){
+    var d=await api('GET','/api/agents');
+    var grid=document.getElementById('agentGrid');
+    var agents=d.agents||[];
+    if(!agents.length){grid.innerHTML='<div class="card" style="text-align:center;color:var(--muted);padding:40px">No agents. Configure OpenClaw in Settings and click Sync.</div>';return;}
+    grid.innerHTML='';
+    agents.forEach(function(a){
+        var div=document.createElement('div');
+        div.className='agent-card';
+        div.innerHTML='<div class="avatar-badge">'+(a.avatar_name?a.avatar_name[0].toUpperCase():'👤')+'</div>'
+            +'<h3>'+a.name+'</h3>'
+            +'<div class="meta">'
+            +(a.avatar_name?'Avatar: '+a.avatar_name:'No avatar')+'<br>'
+            +(a.soul_md?'SOUL.md loaded':'No SOUL.md')+'<br>'
+            +(a.provider||'Default provider')
+            +'</div>';
+        div.onclick=function(){startCall(a.id);};
+        grid.appendChild(div);
+    });
+}
+async function syncAgents(){
+    var d=await api('POST','/api/openclaw/connect');
+    if(d.ok)loadAgents();
+    else alert('Error: '+(d.error||'failed'));
+}
+
+// --- Avatars ---
+async function loadAvatars(){
+    var d=await api('GET','/api/avatars');
+    var grid=document.getElementById('avatarGrid');
+    grid.innerHTML='';
+    (d.avatars||[]).forEach(function(a){
+        var div=document.createElement('div');
+        div.className='card';
+        div.style.cssText='display:inline-block;padding:10px;min-width:120px;text-align:center;cursor:pointer';
+        div.innerHTML='<div style="font-size:24px;margin-bottom:4px">🎭</div><div style="font-size:11px">'+a.name+'</div>';
+        grid.appendChild(div);
+    });
+}
+document.getElementById('avatarUpload').onchange=async function(){
+    if(!this.files.length)return;
+    var f=this.files[0],fd=new FormData();fd.append('file',f);
+    var d=await(await fetch('/api/avatars/upload',{method:'POST',body:fd})).json();
+    if(d.avatar_id){loadAvatars();alert('Avatar uploaded: '+d.name);}
+    this.value='';
+};
+
+// --- Call ---
+async function startCall(agentId){
+    currentAgent=agentId;
+    var agent=await api('GET','/api/agents/'+agentId);
+    agent=agent.agent||{};
+    document.getElementById('callAgentName').textContent=agent.name||agentId;
+    document.getElementById('callMeta').textContent='Connecting...';
+    document.getElementById('transcript').innerHTML='';
+    showPage('call');
+    setTimeout(function(){window.resizeRenderer();},100);
+
+    // Load avatar if assigned
+    if(agent.avatar_path){
+        var url=URL.createObjectURL(await(await fetch(agent.avatar_path)).blob());
+        window.loadAvatar(url);
+    }
+
+    // Connect animation WebSocket
+    connectAnimWs();
+
+    // Get LiveKit token and join room
+    var tok=await api('GET','/api/token?agent_id='+agentId);
+    if(tok.error){addTranscript('Error: '+tok.error,'sys');return;}
+
     try{
-        var resp=await fetch('/token?room=&identity=user-'+Date.now());
-        var data=await resp.json();
-        if(data.error){log('Token error: '+data.error,'er');return;}
-
-        document.getElementById('sRoom').textContent=data.room;
-        log('Joining room: '+data.room);
-
         lkRoom=new LivekitClient.Room({adaptiveStream:true,dynacast:true});
-
-        // Agent audio → capture for animation
-        lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,function(track,pub,participant){
-            if(track.kind==='audio'&&participant.identity!=='user'){
-                log('Agent audio track received','ok');
-                document.getElementById('sAgent').textContent=participant.identity;
-
-                // Attach audio for playback
-                var el=track.attach();
-                el.style.display='none';
-                document.body.appendChild(el);
-
-                // Capture agent audio for animation
+        lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,function(track,pub,p){
+            if(track.kind==='audio'){
+                var el=track.attach();el.style.display='none';document.body.appendChild(el);
                 captureAgentAudio(track);
+                addTranscript('Agent connected','sys');
+                document.getElementById('callMeta').textContent='In call';
             }
         });
-
-        lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,function(p){
-            log('Participant: '+p.identity,'ok');
-            if(p.identity.includes('agent'))document.getElementById('sAgent').textContent=p.identity;
-        });
-
         lkRoom.on(LivekitClient.RoomEvent.Disconnected,function(){
-            lkConnected=false;
-            document.getElementById('pLk').className='pill off';document.getElementById('pLk').textContent='LiveKit';
-            document.getElementById('sState').textContent='disconnected';
-            showCallUI(false);
-            log('Disconnected from room');
+            document.getElementById('callMeta').textContent='Disconnected';
         });
 
-        await lkRoom.connect(data.url,data.token);
+        await lkRoom.connect(tok.url,tok.token);
         await lkRoom.localParticipant.setMicrophoneEnabled(true);
-        lkConnected=true;
-
-        document.getElementById('pLk').className='pill on';document.getElementById('pLk').textContent='LiveKit';
-        document.getElementById('sState').textContent='in call';
-        showCallUI(true);
-        log('Connected! Speak to the agent.','ok');
-
-    }catch(e){log('Join error: '+e.message,'er');}
-}
-
-function showCallUI(inCall){
-    document.getElementById('btnJoin').style.display=inCall?'none':'flex';
-    document.getElementById('btnMic').style.display=inCall?'flex':'none';
-    document.getElementById('btnEnd').style.display=inCall?'flex':'none';
-}
-
-function toggleMic(){
-    if(!lkRoom||!lkConnected)return;
-    micEnabled=!micEnabled;
-    lkRoom.localParticipant.setMicrophoneEnabled(micEnabled);
-    document.getElementById('btnMic').classList.toggle('on',!micEnabled);
-    log(micEnabled?'Mic on':'Mic muted');
+        micOn=true;
+        addTranscript('Connected to room: '+tok.room,'sys');
+        document.getElementById('callMeta').textContent='Waiting for agent...';
+    }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
 function endCall(){
     if(lkRoom){lkRoom.disconnect();lkRoom=null;}
-    lkConnected=false;showCallUI(false);
-    document.getElementById('sState').textContent='idle';
-    log('Call ended');
+    if(animWs){animWs.close();animWs=null;}
+    showPage('dashboard');
 }
 
-// Capture agent's audio track and send to engine for animation
+function toggleMic(){
+    if(!lkRoom)return;
+    micOn=!micOn;
+    lkRoom.localParticipant.setMicrophoneEnabled(micOn);
+    document.getElementById('btnMic').classList.toggle('muted',!micOn);
+}
+
+function addTranscript(text,type){
+    var d=document.createElement('div');d.className='msg '+(type||'agent');d.textContent=text;
+    var t=document.getElementById('transcript');t.appendChild(d);t.scrollTop=99999;
+}
+
+// --- Animation WebSocket ---
+function connectAnimWs(){
+    var p=location.protocol==='https:'?'wss:':'ws:';
+    animWs=new WebSocket(p+'//'+location.host+'/ws/animation');
+    animWs.onmessage=function(e){
+        try{var m=JSON.parse(e.data);
+        if(m.type==='weights'||m.weights){
+            var w=m.weights||{},h=m.head||{};
+            window.setAnimTarget(w,{y:h.yaw||0,p:h.pitch||0,r:h.roll||0});
+            if(m.viseme)document.getElementById('hVis').textContent=m.viseme;
+        }}catch(err){}
+    };
+    animWs.onclose=function(){setTimeout(connectAnimWs,3000);};
+    setInterval(function(){if(animWs&&animWs.readyState===1)animWs.send(JSON.stringify({type:'ping'}));},15000);
+}
+
+// --- Capture agent audio for lip-sync ---
 function captureAgentAudio(track){
     var stream=new MediaStream([track.mediaStreamTrack]);
-    var ctx=new AudioContext();
-    var src=ctx.createMediaStreamSource(stream);
+    var ctx=new AudioContext();var src=ctx.createMediaStreamSource(stream);
     var proc=ctx.createScriptProcessor(4096,1,1);
     proc.onaudioprocess=function(e){
-        if(!_ws||_ws.readyState!==1)return;
+        if(!animWs||animWs.readyState!==1)return;
         var raw=e.inputBuffer.getChannelData(0);
-        // Downsample to 16kHz
         var ratio=ctx.sampleRate/16000,len=Math.round(raw.length/ratio),ds=new Float32Array(len);
         for(var i=0;i<len;i++){var idx=i*ratio,lo=Math.floor(idx),hi=Math.min(lo+1,raw.length-1),f=idx-lo;ds[i]=raw[lo]*(1-f)+raw[hi]*f;}
         var i16=new Int16Array(ds.length);for(var j=0;j<ds.length;j++)i16[j]=Math.max(-32768,Math.min(32767,Math.round(ds[j]*32768)));
         var bytes=new Uint8Array(i16.buffer);var bin='';for(var j=0;j<bytes.length;j++)bin+=String.fromCharCode(bytes[j]);
-        _ws.send(JSON.stringify({type:'audio',data:btoa(bin),sample_rate:16000}));
+        animWs.send(JSON.stringify({type:'audio',data:btoa(bin),sample_rate:16000}));
     };
     src.connect(proc);proc.connect(ctx.destination);
 }
 
-log('Ready. Upload avatar, then click Join Call.','ok');
+// --- Init ---
+loadSettings();
+loadAgents();
+loadAvatars();
+// Check OpenClaw status
+api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 </script>
 </body>
 </html>
