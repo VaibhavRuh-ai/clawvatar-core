@@ -512,16 +512,38 @@ function pickCameraShot(speaking){
     }
 }
 
+// Walk state (declared before setSpeakingState so it can reset them)
+let _walkTime=0, _walkTarget={x:0, z:-0.6, look:0}, _walkActive=false;
+const _camPos=new THREE.Vector3(), _camLook=new THREE.Vector3();
+
+let _speakHoldUntil=0;
+
 function setSpeakingState(speaking){
-    if(speaking===isSpeaking)return;
-    isSpeaking=speaking;
     const now=performance.now();
-    if(now-lastSpeakChange<300)return; // quick debounce
-    lastSpeakChange=now;
-    const shot=pickCameraShot(speaking);
-    camMode=shot.mode;
-    if(shot.pos)camTargetPos.copy(shot.pos);
-    if(shot.look)camTargetLook.copy(shot.look);
+
+    if(speaking){
+        // Extend hold time whenever we detect speech
+        _speakHoldUntil=now+1500; // hold for 1.5s after last speech detected
+        if(!isSpeaking){
+            isSpeaking=true;
+            const shot=pickCameraShot(true);
+            camMode=shot.mode;
+            if(shot.pos)camTargetPos.copy(shot.pos);
+            if(shot.look)camTargetLook.copy(shot.look);
+            _walkActive=false;_walkTime=0;
+            lastSpeakChange=now;
+        }
+    } else {
+        // Only transition out of speaking after hold time expires
+        if(isSpeaking && now>=_speakHoldUntil){
+            isSpeaking=false;
+            const shot=pickCameraShot(false);
+            camMode=shot.mode;
+            if(shot.pos)camTargetPos.copy(shot.pos);
+            if(shot.look)camTargetLook.copy(shot.look);
+            lastSpeakChange=now;
+        }
+    }
 }
 
 // Periodically change camera angle when idle (laptop mode stays fixed when speaking)
@@ -533,9 +555,7 @@ setInterval(function(){
     camMode=shot.mode;
 }, 10000);
 
-// Avatar walking and camera updates per frame
-const _camPos=new THREE.Vector3(), _camLook=new THREE.Vector3();
-let _walkTime=0, _walkTarget={x:0, z:-0.4, look:0}, _walkActive=false;
+// Avatar walking and camera updates per frame (state declared above)
 
 window.toggleCinematic=function(){
     cinematicMode=!cinematicMode;
@@ -595,16 +615,17 @@ function updateScene(dt){
     const avPos=vrm.scene.position;
 
     if(camMode==='laptop'){
-        // Laptop webcam POV — position camera a bit back from laptop for wider framing
+        // Laptop "video call" view — pulled back far enough to see full upper body
+        // Simulates seeing agent on a video call from laptop
         const lcam=getLaptopCameraWorldPose();
-        // Pull camera slightly back and up from the laptop cam dot
+        // Position the camera well behind the laptop (viewer side) for wider framing
         _camPos.copy(lcam.pos);
-        _camPos.z+=0.3; // back toward viewer side
-        _camPos.y+=0.05;
-        // Look at avatar's upper chest (shows face + shoulders, not too close)
-        _camLook.set(avPos.x, 1.35, avPos.z);
-        cam.position.lerp(_camPos, 0.15); // fast smooth transition
-        ctrl.target.lerp(_camLook, 0.18);
+        _camPos.z+=1.0; // pulled back significantly
+        _camPos.y+=0.2;
+        // Look at avatar's mid-torso (shows full upper body + face)
+        _camLook.set(avPos.x, 1.2, avPos.z);
+        cam.position.lerp(_camPos, 0.12); // smooth transition
+        ctrl.target.lerp(_camLook, 0.15);
     } else {
         // Normal cinematic shot — relative to avatar position
         _camPos.set(avPos.x+camTargetPos.x, camTargetPos.y, avPos.z+camTargetPos.z);
