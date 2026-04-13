@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from clawvatar_core import db
 from clawvatar_core.adapters.openclaw import OpenClawAdapter
+from clawvatar_core.director import IdleDirector
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,25 @@ async def chat_ws(ws: WebSocket):
 
 
 # ==================== Health ====================
+
+@app.post("/api/director/action")
+async def director_action(body: dict):
+    """Get an idle action from the director LLM (fire-and-forget from client).
+
+    Body: {agent_id, last_user, last_agent, idle_seconds, last_action}
+    Returns: {look, gesture, expression, duration}
+    """
+    api_key = db.get_setting("google_api_key")
+    director = IdleDirector(api_key=api_key)
+    action = await director.pick_action(
+        agent_id=body.get("agent_id", ""),
+        last_user_message=body.get("last_user", ""),
+        last_agent_message=body.get("last_agent", ""),
+        idle_seconds=float(body.get("idle_seconds", 5)),
+        last_action=body.get("last_action", ""),
+    )
+    return action
+
 
 @app.get("/api/health")
 async def health():

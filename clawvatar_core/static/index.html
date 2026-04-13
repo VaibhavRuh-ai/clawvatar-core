@@ -540,6 +540,41 @@ window.loadAvatar=async function(path){
 window.setAnimTarget=function(w,h){tgtW=w;tgtH=h;};
 window.resizeRenderer=rsz;
 
+// === Director: idle action targets (set async by LLM, applied per frame) ===
+const LOOK_TARGETS={
+    user:    new THREE.Vector3(0, 1.5, 3),       // toward camera
+    window:  new THREE.Vector3(0, 1.7, -4),       // back wall window
+    art:     new THREE.Vector3(2.5, 2.1, -4),     // art piece
+    plant:   new THREE.Vector3(4.4, 0.5, -0.8),   // plant in corner
+    bookshelf: new THREE.Vector3(-5, 1.5, -2),    // bookshelf
+    floor:   new THREE.Vector3(0, 0, 0.5),
+    ceiling: new THREE.Vector3(0, 3, 0),
+    side_left: new THREE.Vector3(-3, 1.5, 1),
+    side_right: new THREE.Vector3(3, 1.5, 1),
+};
+let _lookTarget=new THREE.Vector3(0, 1.5, 3); // default: user
+let _lookCurrent=new THREE.Vector3(0, 1.5, 3);
+let _gesture='none', _expression='neutral', _actionEndTime=0, _lastAction='';
+const _gestureMap={
+    'scratch_chin':{leftArmZ:1.2, rightArmZ:-0.5, headTilt:0.1},
+    'cross_arms':{leftArmZ:0.4, rightArmZ:-0.4},
+    'lean_back':{bodyZ:-0.05, headTilt:-0.05},
+    'lean_forward':{bodyZ:0.05, headTilt:0.05},
+    'tilt_head_left':{headRoll:0.2},
+    'tilt_head_right':{headRoll:-0.2},
+    'stretch':{leftArmZ:0.2, rightArmZ:-0.2},
+    'fold_hands':{leftArmZ:1.0, rightArmZ:-1.0},
+    'look_at_hands':{},
+    'none':{},
+};
+window.setDirectorAction=function(action){
+    _lastAction=action.gesture+'/'+action.look;
+    _lookTarget.copy(LOOK_TARGETS[action.look]||LOOK_TARGETS.user);
+    _gesture=action.gesture||'none';
+    _expression=action.expression||'neutral';
+    _actionEndTime=performance.now()+(action.duration||4)*1000;
+};
+
 // === Cinematic Camera + Avatar Movement ===
 let cinematicMode=true;
 let isSpeaking=false, walkPhase=0, walkPath=[], pathIdx=0;
@@ -646,6 +681,49 @@ function updateScene(dt){
     while(diff>Math.PI)diff-=Math.PI*2;
     while(diff<-Math.PI)diff+=Math.PI*2;
     vrm.scene.rotation.y+=diff*0.15;
+
+    // ── Director-driven behavior (idle only) ──
+    const speakingNow=isSpeaking;
+    const targetLook=speakingNow ? new THREE.Vector3(cam.position.x, 1.5, cam.position.z) : _lookTarget;
+    _lookCurrent.lerp(targetLook, 0.04);
+
+    // Apply head look via head bone (subtle, additive to lipsync head)
+    if(hb){
+        const headWorldPos=new THREE.Vector3();
+        hb.getWorldPosition(headWorldPos);
+        const dx=_lookCurrent.x-headWorldPos.x;
+        const dz=_lookCurrent.z-headWorldPos.z;
+        const dy=_lookCurrent.y-headWorldPos.y;
+        const lookYaw=Math.atan2(dx, dz)-vrm.scene.rotation.y;
+        const lookPitch=Math.atan2(dy, Math.sqrt(dx*dx+dz*dz));
+        // Clamp head rotation to natural range
+        const clampedYaw=Math.max(-0.7, Math.min(0.7, lookYaw));
+        const clampedPitch=Math.max(-0.4, Math.min(0.3, -lookPitch*0.5));
+        // Add to lipsync head (curH set elsewhere)
+        hb.rotation.y=curH.y*Math.PI/180+clampedYaw*0.6;
+        hb.rotation.x=curH.p*Math.PI/180+clampedPitch;
+    }
+
+    // Apply gesture (only when idle)
+    if(!speakingNow && _gesture!=='none' && performance.now()<_actionEndTime){
+        const g=_gestureMap[_gesture]||{};
+        try{
+            const h=vrm.humanoid;
+            const la=h.getNormalizedBoneNode('leftUpperArm');
+            const ra=h.getNormalizedBoneNode('rightUpperArm');
+            if(la && g.leftArmZ!==undefined) la.rotation.z=la.rotation.z*0.85+g.leftArmZ*0.15;
+            if(ra && g.rightArmZ!==undefined) ra.rotation.z=ra.rotation.z*0.85+g.rightArmZ*0.15;
+        }catch(e){}
+    } else if(!speakingNow){
+        // Smoothly relax arms back to default
+        try{
+            const h=vrm.humanoid;
+            const la=h.getNormalizedBoneNode('leftUpperArm');
+            const ra=h.getNormalizedBoneNode('rightUpperArm');
+            if(la) la.rotation.z=la.rotation.z*0.9+1.2*0.1;
+            if(ra) ra.rotation.z=ra.rotation.z*0.9+(-1.2)*0.1;
+        }catch(e){}
+    }
 
     // ── Cinematic camera (smooth follow) ──
     const avPos=vrm.scene.position;
@@ -903,6 +981,39 @@ document.getElementById('bgImage').onchange=function(){
 // Restore saved background — default to room
 var savedBg=localStorage.getItem('clawvatar_bg')||'room';
 setTimeout(function(){window.setBackground(savedBg);},300);
+
+// === Director polling (idle only, never blocks voice) ===
+var _lastSpeakTime=Date.now(), _lastUserMsg='', _lastAgentMsg='', _directorBusy=false;
+window.markUserSpoke=function(msg){_lastUserMsg=msg||'';_lastSpeakTime=Date.now();};
+window.markAgentSpoke=function(msg){_lastAgentMsg=msg||'';_lastSpeakTime=Date.now();};
+
+async function tickDirector(){
+    if(_directorBusy)return;
+    if(typeof isSpeaking!=='undefined' && isSpeaking){_lastSpeakTime=Date.now();return;}
+    if(!currentAgent)return; // not in a call
+    const idleMs=Date.now()-_lastSpeakTime;
+    if(idleMs<5000)return; // not idle long enough
+    if(performance.now()<_actionEndTime)return; // still doing previous action
+    _directorBusy=true;
+    try{
+        const r=await fetch('/api/director/action',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+                agent_id:currentAgent,
+                last_user:_lastUserMsg,
+                last_agent:_lastAgentMsg,
+                idle_seconds:idleMs/1000,
+                last_action:_lastAction||''
+            })
+        });
+        const action=await r.json();
+        if(action && !action.error){
+            window.setDirectorAction(action);
+        }
+    }catch(e){}
+    _directorBusy=false;
+}
+setInterval(tickDirector, 4000); // poll every 4s, only fires when idle
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 </script>
