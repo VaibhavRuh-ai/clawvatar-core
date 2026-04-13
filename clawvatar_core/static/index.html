@@ -389,13 +389,29 @@ window.loadAvatar=async function(path){
     try{
         const g=await ldr.loadAsync(path);vrm=g.userData.vrm;
         if(vrm){scene.add(vrm.scene);
-        // Position avatar in the room (standing on floor, slightly in front of desk)
-        vrm.scene.position.set(0,0,-0.4);
-        // VRM models face -Z by default — rotate 180° so face looks toward camera (+Z)
+        // Auto-fit: scale avatar to standard 1.7m height, position feet on floor
+        const TARGET_HEIGHT=1.7;
+        vrm.scene.updateMatrixWorld(true);
+        const bb=new THREE.Box3().setFromObject(vrm.scene);
+        const size=new THREE.Vector3();bb.getSize(size);
+        const center=new THREE.Vector3();bb.getCenter(center);
+        const currentHeight=size.y;
+        if(currentHeight>0.01){
+            const scale=TARGET_HEIGHT/currentHeight;
+            vrm.scene.scale.setScalar(scale);
+            vrm.scene.updateMatrixWorld(true);
+            // Recompute bounds after scaling
+            bb.setFromObject(vrm.scene);
+            bb.getSize(size);bb.getCenter(center);
+        }
+        // Position so feet touch floor (y=0) and centered on x,z=0,-0.4
+        vrm.scene.position.set(-center.x,-bb.min.y,-0.4);
+        // Face camera (VRM faces -Z by default)
         vrm.scene.rotation.y=Math.PI;
         vrm.scene.traverse(function(o){if(o.isMesh){o.castShadow=true;}});
-        // Front-facing camera at eye level
-        cam.position.set(0,1.5,1.6);ctrl.target.set(0,1.4,0);ctrl.update();
+        // Frame camera on face (head is roughly 90% of total height)
+        const eyeHeight=size.y*0.92;
+        cam.position.set(0,eyeHeight,1.6);ctrl.target.set(0,eyeHeight-0.05,0);ctrl.update();
         try{const h=vrm.humanoid;if(h){const la=h.getNormalizedBoneNode('leftUpperArm'),ra=h.getNormalizedBoneNode('rightUpperArm');if(la)la.rotation.z=1.2;if(ra)ra.rotation.z=-1.2;hb=h.getNormalizedBoneNode('head');}}catch(e){}}
     }catch(e){console.error('Avatar load error:',e);}
 };
