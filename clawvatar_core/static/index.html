@@ -575,9 +575,12 @@ window.loadAvatar=async function(path){
         // Face camera (VRM faces -Z by default)
         vrm.scene.rotation.y=Math.PI;
         vrm.scene.traverse(function(o){if(o.isMesh){o.castShadow=true;}});
-        // Frame camera on face (head is roughly 90% of total height)
-        const eyeHeight=size.y*0.92;
-        cam.position.set(0,eyeHeight,1.6);ctrl.target.set(0,eyeHeight-0.05,0);ctrl.update();
+        // Set initial camera to a wide shot (cinematic mode will take over from here)
+        cam.position.set(0,1.7,3.5);ctrl.target.set(0,1.2,0);ctrl.update();
+        // Reset cinematic camera state to wide shot
+        camMode='wide';
+        camTargetPos.set(0,1.7,3.5);
+        camTargetLook.set(0,1.2,0);
         try{const h=vrm.humanoid;if(h){const la=h.getNormalizedBoneNode('leftUpperArm'),ra=h.getNormalizedBoneNode('rightUpperArm');if(la)la.rotation.z=1.2;if(ra)ra.rotation.z=-1.2;hb=h.getNormalizedBoneNode('head');}}catch(e){}}
     }catch(e){console.error('Avatar load error:',e);}
 };
