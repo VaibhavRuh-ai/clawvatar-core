@@ -278,20 +278,9 @@ for(let i=0;i<6;i++){
     leaf.scale.set(1,1.3,1);leaf.castShadow=true;roomGroup.add(leaf);
 }
 
-// Desk behind avatar
+// Material definitions for furniture (used by other elements)
 const deskTopMat=new THREE.MeshStandardMaterial({color:0x8B6F47,roughness:0.5});
-const deskTop=new THREE.Mesh(new THREE.BoxGeometry(2.5,0.05,0.7),deskTopMat);
-deskTop.position.set(0,0.75,-1.6);deskTop.castShadow=true;deskTop.receiveShadow=true;roomGroup.add(deskTop);
 const legMat=new THREE.MeshStandardMaterial({color:0x4a3a2a,roughness:0.6});
-[[-1.15,-1.3],[1.15,-1.3],[-1.15,-1.9],[1.15,-1.9]].forEach(p=>{
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.75,0.06),legMat);
-    leg.position.set(p[0],0.375,p[1]);leg.castShadow=true;roomGroup.add(leg);
-});
-// Lamp on desk
-const lampBase=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.15,0.05,16),new THREE.MeshStandardMaterial({color:0x222}));
-lampBase.position.set(0.9,0.78,-1.6);roomGroup.add(lampBase);
-const lampShade=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.25,16,1,true),new THREE.MeshStandardMaterial({color:0xfff5dc,emissive:0xfff5dc,emissiveIntensity:0.4,side:THREE.DoubleSide}));
-lampShade.position.set(0.9,1.1,-1.6);lampShade.rotation.x=Math.PI;roomGroup.add(lampShade);
 
 // Frame on wall
 const frame=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.4),new THREE.MeshStandardMaterial({color:0x4a3a2a}));
@@ -486,7 +475,6 @@ const fill=new THREE.DirectionalLight(0xfff0d4,0.6);fill.position.set(0,2,3);sce
 // Side accent
 const side=new THREE.DirectionalLight(0xa0c8ff,0.3);side.position.set(-2,1.5,1);scene.add(side);
 // Lamp glow
-const lampLight=new THREE.PointLight(0xfff5dc,0.4,2);lampLight.position.set(0.9,1.0,-1.6);scene.add(lampLight);
 const ldr=new GLTFLoader();if(VLP)ldr.register(p=>new VLP(p));
 
 let vrm=null,clk=new THREE.Clock(),curW={},tgtW={},curH={y:0,p:0,r:0},tgtH={y:0,p:0,r:0},hb=null;
@@ -691,71 +679,18 @@ function updateScene(dt){
     if(!vrm)return;
     if(!cinematicMode)return;
 
+    // Avatar stays at HOME — never walks
+    vrm.scene.position.x+=(HOME.x-vrm.scene.position.x)*0.15;
+    vrm.scene.position.z+=(HOME.z-vrm.scene.position.z)*0.15;
+    vrm.scene.position.y*=0.9; // settle to floor
+
+    // Always face the camera (VRM default faces -Z, so add π)
     const cx=vrm.scene.position.x, cz=vrm.scene.position.z;
-
-    if(isSpeaking){
-        // ── SPEAKING: quickly return to HOME spot, face camera/laptop ──
-        const dx=HOME.x-cx, dz=HOME.z-cz;
-        const dist=Math.sqrt(dx*dx+dz*dz);
-        if(dist>0.03){
-            const speed=1.2*dt; // faster return
-            vrm.scene.position.x+=dx/dist*speed;
-            vrm.scene.position.z+=dz/dist*speed;
-            walkPhase+=dt*10;
-            vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.03;
-        } else {
-            vrm.scene.position.y*=0.8;
-        }
-        // Face the camera always while speaking — VRM faces -Z by default, add π
-        const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
-        let diff=camDir-vrm.scene.rotation.y;
-        while(diff>Math.PI)diff-=Math.PI*2;
-        while(diff<-Math.PI)diff+=Math.PI*2;
-        vrm.scene.rotation.y+=diff*0.25;
-    } else {
-        // ── IDLE: stay at home unless idle for a LONG time ──
-        _walkTime+=dt;
-        if(_walkTime>20){
-            // After 20s of idle, pick a new wander spot
-            _walkTime=0;
-            pathIdx=(pathIdx+1)%walkPath.length;
-            _walkTarget=walkPath[pathIdx];
-            _walkActive=true;
-        }
-
-        if(_walkActive && _walkTarget){
-            const dx=_walkTarget.x-cx, dz=_walkTarget.z-cz;
-            const dist=Math.sqrt(dx*dx+dz*dz);
-            if(dist>0.05){
-                // Walk slowly toward target
-                const speed=0.4*dt;
-                vrm.scene.position.x+=dx/dist*speed;
-                vrm.scene.position.z+=dz/dist*speed;
-                const targetRot=Math.atan2(dx,dz)+Math.PI;
-                let rotDiff=targetRot-vrm.scene.rotation.y;
-                while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
-                while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
-                vrm.scene.rotation.y+=rotDiff*0.08;
-                walkPhase+=dt*8;
-                vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.04;
-            } else {
-                // Arrived — stay here, face waypoint direction
-                _walkActive=false;
-                const targetRot=Math.PI+(_walkTarget.look||0);
-                vrm.scene.rotation.y+=(targetRot-vrm.scene.rotation.y)*0.08;
-                vrm.scene.position.y*=0.85;
-            }
-        } else {
-            // Standing still at home — gentle settle
-            vrm.scene.position.y*=0.9;
-            // Slight drift toward camera (VRM faces -Z, so add π)
-            const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
-            let diff=camDir-vrm.scene.rotation.y;
-            while(diff>Math.PI)diff-=Math.PI*2;
-            while(diff<-Math.PI)diff+=Math.PI*2;
-            vrm.scene.rotation.y+=diff*0.02;
-        }
-    }
+    const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
+    let diff=camDir-vrm.scene.rotation.y;
+    while(diff>Math.PI)diff-=Math.PI*2;
+    while(diff<-Math.PI)diff+=Math.PI*2;
+    vrm.scene.rotation.y+=diff*0.15;
 
     // ── Cinematic camera (smooth follow) ──
     const avPos=vrm.scene.position;
