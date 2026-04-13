@@ -323,7 +323,7 @@ trackpad.position.set(0,0.02,-0.08);laptopGroup.add(trackpad);
 // Screen (hinged back, tilted slightly forward for the viewer)
 const screenHinge=new THREE.Group();
 screenHinge.position.set(0,0.018,0.13);
-screenHinge.rotation.x=-Math.PI*0.45; // tilted back, facing avatar
+screenHinge.rotation.x=-Math.PI*0.1; // laptop open, screen nearly vertical facing viewer
 laptopGroup.add(screenHinge);
 const screenBack=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.22,0.015),
     new THREE.MeshStandardMaterial({color:0x2a2a32,roughness:0.4,metalness:0.6}));
@@ -605,15 +605,15 @@ let camTargetLook=new THREE.Vector3(0,1.4,0);
 let lastSpeakChange=0;
 
 // Walk waypoints in the room (avatar wanders here when idle)
-// Avatar walks around the bigger room (avoiding furniture)
+// Avatar's HOME spot (where it stands when speaking or briefly idle)
+const HOME={x:0, z:-0.4, look:0};
+// Occasional idle wander spots (only after long idle periods)
 walkPath=[
-    {x:0, z:-0.8, look:0},
-    {x:-1.5, z:-1.0, look:Math.PI*0.3},
-    {x:1.5, z:-1.0, look:-Math.PI*0.2},
-    {x:0, z:-0.2, look:0},
-    {x:-2.0, z:-0.3, look:Math.PI*0.2},
-    {x:0.5, z:-1.8, look:0},
-    {x:-0.8, z:-0.5, look:Math.PI*0.15},
+    HOME, // always return here
+    {x:-1.2, z:-0.6, look:Math.PI*0.25},
+    HOME,
+    {x:1.2, z:-0.6, look:-Math.PI*0.2},
+    HOME,
 ];
 
 function pickCameraShot(speaking){
@@ -689,65 +689,85 @@ window.toggleCinematic=function(){
 
 function updateScene(dt){
     if(!vrm)return;
-    if(!cinematicMode)return; // user has manual control
+    if(!cinematicMode)return;
 
-    // ── Avatar walking (only when idle) ──
-    if(!isSpeaking){
+    const cx=vrm.scene.position.x, cz=vrm.scene.position.z;
+
+    if(isSpeaking){
+        // ── SPEAKING: quickly return to HOME spot, face camera/laptop ──
+        const dx=HOME.x-cx, dz=HOME.z-cz;
+        const dist=Math.sqrt(dx*dx+dz*dz);
+        if(dist>0.03){
+            const speed=1.2*dt; // faster return
+            vrm.scene.position.x+=dx/dist*speed;
+            vrm.scene.position.z+=dz/dist*speed;
+            walkPhase+=dt*10;
+            vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.03;
+        } else {
+            vrm.scene.position.y*=0.8;
+        }
+        // Face the camera always while speaking
+        const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz);
+        let diff=camDir-vrm.scene.rotation.y;
+        while(diff>Math.PI)diff-=Math.PI*2;
+        while(diff<-Math.PI)diff+=Math.PI*2;
+        vrm.scene.rotation.y+=diff*0.25;
+    } else {
+        // ── IDLE: stay at home unless idle for a LONG time ──
         _walkTime+=dt;
-        if(_walkTime>5 || !_walkActive){
+        if(_walkTime>20){
+            // After 20s of idle, pick a new wander spot
             _walkTime=0;
             pathIdx=(pathIdx+1)%walkPath.length;
             _walkTarget=walkPath[pathIdx];
             _walkActive=true;
         }
-        // Move toward target
-        const cx=vrm.scene.position.x, cz=vrm.scene.position.z;
-        const dx=_walkTarget.x-cx, dz=_walkTarget.z-cz;
-        const dist=Math.sqrt(dx*dx+dz*dz);
-        if(dist>0.05){
-            const speed=0.3*dt;
-            vrm.scene.position.x+=dx/dist*speed;
-            vrm.scene.position.z+=dz/dist*speed;
-            // Face walking direction
-            const targetRot=Math.atan2(dx,dz)+Math.PI;
-            const curRot=vrm.scene.rotation.y;
-            let rotDiff=targetRot-curRot;
-            while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
-            while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
-            vrm.scene.rotation.y+=rotDiff*0.05;
-            // Walking animation: subtle vertical bob
-            walkPhase+=dt*8;
-            vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.04;
+
+        if(_walkActive && _walkTarget){
+            const dx=_walkTarget.x-cx, dz=_walkTarget.z-cz;
+            const dist=Math.sqrt(dx*dx+dz*dz);
+            if(dist>0.05){
+                // Walk slowly toward target
+                const speed=0.4*dt;
+                vrm.scene.position.x+=dx/dist*speed;
+                vrm.scene.position.z+=dz/dist*speed;
+                const targetRot=Math.atan2(dx,dz)+Math.PI;
+                let rotDiff=targetRot-vrm.scene.rotation.y;
+                while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
+                while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
+                vrm.scene.rotation.y+=rotDiff*0.08;
+                walkPhase+=dt*8;
+                vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.04;
+            } else {
+                // Arrived — stay here, face waypoint direction
+                _walkActive=false;
+                const targetRot=Math.PI+(_walkTarget.look||0);
+                vrm.scene.rotation.y+=(targetRot-vrm.scene.rotation.y)*0.08;
+                vrm.scene.position.y*=0.85;
+            }
         } else {
-            // Arrived — face camera angle from waypoint
-            const targetRot=Math.PI+_walkTarget.look;
-            vrm.scene.rotation.y+=(targetRot-vrm.scene.rotation.y)*0.05;
-            vrm.scene.position.y*=0.9; // settle
+            // Standing still at home — gentle settle
+            vrm.scene.position.y*=0.9;
+            // Slight rotation toward camera (not locked, but aware)
+            const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz);
+            let diff=camDir-vrm.scene.rotation.y;
+            while(diff>Math.PI)diff-=Math.PI*2;
+            while(diff<-Math.PI)diff+=Math.PI*2;
+            vrm.scene.rotation.y+=diff*0.02; // very slow drift toward camera
         }
-    } else {
-        // When speaking: always face the camera (fast, smooth)
-        const camDir=Math.atan2(cam.position.x-vrm.scene.position.x, cam.position.z-vrm.scene.position.z);
-        let diff=camDir-vrm.scene.rotation.y;
-        while(diff>Math.PI)diff-=Math.PI*2;
-        while(diff<-Math.PI)diff+=Math.PI*2;
-        vrm.scene.rotation.y+=diff*0.25; // much faster — 0.08 → 0.25
-        vrm.scene.position.y*=0.85;
     }
 
     // ── Cinematic camera (smooth follow) ──
     const avPos=vrm.scene.position;
 
     if(camMode==='laptop'){
-        // Laptop "video call" view — pulled back far enough to see full upper body
-        // Simulates seeing agent on a video call from laptop
-        const lcam=getLaptopCameraWorldPose();
-        // Position the camera well behind the laptop (viewer side) for wider framing
-        _camPos.copy(lcam.pos);
-        _camPos.z+=1.0; // pulled back significantly
-        _camPos.y+=0.2;
-        // Look at avatar's mid-torso (shows full upper body + face)
-        _camLook.set(avPos.x, 1.2, avPos.z);
-        cam.position.lerp(_camPos, 0.12); // smooth transition
+        // Video call POV — frame like a webcam: eye-level, face + upper torso
+        // Laptop is at z=1.2, avatar at z=-0.4 (distance ~1.6m — natural webcam distance)
+        // Place camera slightly above laptop screen, centered
+        _camPos.set(0, 1.55, 1.3);  // just above the laptop screen at eye level
+        // Look at avatar's face
+        _camLook.set(avPos.x, 1.55, avPos.z);
+        cam.position.lerp(_camPos, 0.12);
         ctrl.target.lerp(_camLook, 0.15);
     } else {
         // Normal cinematic shot — relative to avatar position
