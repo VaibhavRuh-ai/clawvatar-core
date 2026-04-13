@@ -401,8 +401,7 @@ async def director_action(body: dict):
     director = IdleDirector(api_key=api_key)
     action = await director.pick_action(
         agent_id=body.get("agent_id", ""),
-        last_user_message=body.get("last_user", ""),
-        last_agent_message=body.get("last_agent", ""),
+        transcript=body.get("transcript", ""),
         idle_seconds=float(body.get("idle_seconds", 5)),
         last_action=body.get("last_action", ""),
     )

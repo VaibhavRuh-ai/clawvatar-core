@@ -452,7 +452,29 @@ function anim(){
     if(typeof updateScene==='function')updateScene(dt);
     for(const k of new Set([...Object.keys(curW),...Object.keys(tgtW)])){const c=curW[k]||0,t=tgtW[k]||0,v=lerp(c,t,.25);if(v>.003)curW[k]=v;else delete curW[k];}
     curH.y=lerp(curH.y,tgtH.y,.12);curH.p=lerp(curH.p,tgtH.p,.12);curH.r=lerp(curH.r,tgtH.r,.12);
-    if(vrm){const em=vrm.expressionManager;if(em){for(const n of Object.keys(em.expressionMap))try{em.setValue(n,0)}catch(e){}for(const[k,v] of Object.entries(curW))try{em.setValue(NM[k]||k,Math.min(1,v))}catch(e){}}if(hb){hb.rotation.y=curH.y*Math.PI/180;hb.rotation.x=curH.p*Math.PI/180;hb.rotation.z=curH.r*Math.PI/180;}vrm.update(dt);}
+    if(vrm){
+        const em=vrm.expressionManager;
+        if(em){for(const n of Object.keys(em.expressionMap))try{em.setValue(n,0)}catch(e){}for(const[k,v] of Object.entries(curW))try{em.setValue(NM[k]||k,Math.min(1,v))}catch(e){}}
+        if(hb){
+            // Compute director look offset (additive to lipsync head pose)
+            let dYaw=0, dPitch=0;
+            if(typeof _lookCurrent!=='undefined' && _lookCurrent){
+                const headWorldPos=new THREE.Vector3();
+                hb.parent.getWorldPosition(headWorldPos);
+                const dx=_lookCurrent.x-headWorldPos.x;
+                const dz=_lookCurrent.z-headWorldPos.z;
+                const dy=_lookCurrent.y-headWorldPos.y;
+                const lookYaw=Math.atan2(dx, dz)-vrm.scene.rotation.y;
+                const lookPitch=Math.atan2(dy, Math.sqrt(dx*dx+dz*dz));
+                dYaw=Math.max(-0.6, Math.min(0.6, lookYaw))*0.7;
+                dPitch=Math.max(-0.3, Math.min(0.25, -lookPitch*0.6));
+            }
+            hb.rotation.y=curH.y*Math.PI/180+dYaw;
+            hb.rotation.x=curH.p*Math.PI/180+dPitch;
+            hb.rotation.z=curH.r*Math.PI/180;
+        }
+        vrm.update(dt);
+    }
     R.render(scene,cam);fc++;if(performance.now()-ft>=1e3){document.getElementById('hFps').textContent=fc;fc=0;ft=performance.now();}
 }
 anim();
@@ -682,27 +704,10 @@ function updateScene(dt){
     while(diff<-Math.PI)diff+=Math.PI*2;
     vrm.scene.rotation.y+=diff*0.15;
 
-    // ── Director-driven behavior (idle only) ──
+    // ── Director look target (applied in render loop, not here) ──
     const speakingNow=isSpeaking;
     const targetLook=speakingNow ? new THREE.Vector3(cam.position.x, 1.5, cam.position.z) : _lookTarget;
     _lookCurrent.lerp(targetLook, 0.04);
-
-    // Apply head look via head bone (subtle, additive to lipsync head)
-    if(hb){
-        const headWorldPos=new THREE.Vector3();
-        hb.getWorldPosition(headWorldPos);
-        const dx=_lookCurrent.x-headWorldPos.x;
-        const dz=_lookCurrent.z-headWorldPos.z;
-        const dy=_lookCurrent.y-headWorldPos.y;
-        const lookYaw=Math.atan2(dx, dz)-vrm.scene.rotation.y;
-        const lookPitch=Math.atan2(dy, Math.sqrt(dx*dx+dz*dz));
-        // Clamp head rotation to natural range
-        const clampedYaw=Math.max(-0.7, Math.min(0.7, lookYaw));
-        const clampedPitch=Math.max(-0.4, Math.min(0.3, -lookPitch*0.5));
-        // Add to lipsync head (curH set elsewhere)
-        hb.rotation.y=curH.y*Math.PI/180+clampedYaw*0.6;
-        hb.rotation.x=curH.p*Math.PI/180+clampedPitch;
-    }
 
     // Apply gesture (only when idle)
     if(!speakingNow && _gesture!=='none' && performance.now()<_actionEndTime){
@@ -897,6 +902,24 @@ async function startCall(agentId){
                 document.getElementById('callMeta').textContent='In call';
             }
         });
+        // Capture transcriptions for context-aware director
+        lkRoom.on(LivekitClient.RoomEvent.TranscriptionReceived,function(segments,participant){
+            try{
+                segments.forEach(function(seg){
+                    if(!seg.final)return;
+                    var text=seg.text||'';
+                    if(!text)return;
+                    // Determine who said it: local = user, remote = agent
+                    if(participant && participant.identity && participant.identity.startsWith('user')){
+                        if(typeof window.markUserSpoke==='function')window.markUserSpoke(text);
+                        addTranscript('You: '+text,'user');
+                    } else {
+                        if(typeof window.markAgentSpoke==='function')window.markAgentSpoke(text);
+                        addTranscript('Agent: '+text,'agent');
+                    }
+                });
+            }catch(e){}
+        });
         lkRoom.on(LivekitClient.RoomEvent.Disconnected,function(){
             document.getElementById('callMeta').textContent='Disconnected';
         });
@@ -983,25 +1006,42 @@ var savedBg=localStorage.getItem('clawvatar_bg')||'room';
 setTimeout(function(){window.setBackground(savedBg);},300);
 
 // === Director polling (idle only, never blocks voice) ===
-var _lastSpeakTime=Date.now(), _lastUserMsg='', _lastAgentMsg='', _directorBusy=false;
-window.markUserSpoke=function(msg){_lastUserMsg=msg||'';_lastSpeakTime=Date.now();};
-window.markAgentSpoke=function(msg){_lastAgentMsg=msg||'';_lastSpeakTime=Date.now();};
+var _lastSpeakTime=Date.now(), _directorBusy=false;
+var _transcriptHistory=[]; // [{role:'user'|'agent', text, t}]
+window.markUserSpoke=function(msg){
+    if(!msg)return;
+    _transcriptHistory.push({role:'user',text:msg,t:Date.now()});
+    if(_transcriptHistory.length>10)_transcriptHistory.shift();
+    _lastSpeakTime=Date.now();
+};
+window.markAgentSpoke=function(msg){
+    if(!msg)return;
+    _transcriptHistory.push({role:'agent',text:msg,t:Date.now()});
+    if(_transcriptHistory.length>10)_transcriptHistory.shift();
+    _lastSpeakTime=Date.now();
+};
+
+function buildContext(){
+    // Last 6 turns as a transcript
+    return _transcriptHistory.slice(-6).map(function(m){
+        return (m.role==='user'?'User: ':'Agent: ')+m.text;
+    }).join('\n');
+}
 
 async function tickDirector(){
     if(_directorBusy)return;
     if(typeof isSpeaking!=='undefined' && isSpeaking){_lastSpeakTime=Date.now();return;}
-    if(!currentAgent)return; // not in a call
+    if(!currentAgent)return;
     const idleMs=Date.now()-_lastSpeakTime;
-    if(idleMs<5000)return; // not idle long enough
-    if(performance.now()<_actionEndTime)return; // still doing previous action
+    if(idleMs<5000)return;
+    if(performance.now()<_actionEndTime)return;
     _directorBusy=true;
     try{
         const r=await fetch('/api/director/action',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
                 agent_id:currentAgent,
-                last_user:_lastUserMsg,
-                last_agent:_lastAgentMsg,
+                transcript:buildContext(),
                 idle_seconds:idleMs/1000,
                 last_action:_lastAction||''
             })
@@ -1013,7 +1053,7 @@ async function tickDirector(){
     }catch(e){}
     _directorBusy=false;
 }
-setInterval(tickDirector, 4000); // poll every 4s, only fires when idle
+setInterval(tickDirector, 4000);
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 </script>

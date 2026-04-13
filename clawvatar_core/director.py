@@ -54,29 +54,23 @@ class IdleDirector:
     async def pick_action(
         self,
         agent_id: str = "",
-        last_user_message: str = "",
-        last_agent_message: str = "",
+        transcript: str = "",
         idle_seconds: float = 5.0,
         last_action: str = "",
     ) -> dict:
-        """Get a director action from the LLM. Returns dict with look/gesture/expression/duration.
-
-        On error, returns a safe fallback action.
-        """
+        """Get a director action from the LLM. Returns dict with look/gesture/expression/duration."""
         client = self._get_client()
         if client is None:
             return self._fallback(idle_seconds)
 
-        # Build context — keep it tight for speed
+        # Build context — full conversation transcript for context-aware reactions
         context = f"Agent: {agent_id or 'assistant'}\n"
-        if last_user_message:
-            context += f"Last user: {last_user_message[:200]}\n"
-        if last_agent_message:
-            context += f"Last agent reply: {last_agent_message[:200]}\n"
-        context += f"Idle: {int(idle_seconds)}s\n"
+        if transcript:
+            context += f"Recent conversation:\n{transcript[:1500]}\n"
+        context += f"Avatar idle for {int(idle_seconds)}s.\n"
         if last_action:
-            context += f"Last action: {last_action} (avoid repeating)\n"
-        context += "Pick one natural idle action."
+            context += f"Just did: {last_action} (vary it).\n"
+        context += "Pick natural body language matching the conversation mood and topic."
 
         try:
             from google.genai import types
