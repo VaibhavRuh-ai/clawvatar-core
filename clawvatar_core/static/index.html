@@ -706,8 +706,8 @@ function updateScene(dt){
         } else {
             vrm.scene.position.y*=0.8;
         }
-        // Face the camera always while speaking
-        const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz);
+        // Face the camera always while speaking — VRM faces -Z by default, add π
+        const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
         let diff=camDir-vrm.scene.rotation.y;
         while(diff>Math.PI)diff-=Math.PI*2;
         while(diff<-Math.PI)diff+=Math.PI*2;
@@ -748,12 +748,12 @@ function updateScene(dt){
         } else {
             // Standing still at home — gentle settle
             vrm.scene.position.y*=0.9;
-            // Slight rotation toward camera (not locked, but aware)
-            const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz);
+            // Slight drift toward camera (VRM faces -Z, so add π)
+            const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
             let diff=camDir-vrm.scene.rotation.y;
             while(diff>Math.PI)diff-=Math.PI*2;
             while(diff<-Math.PI)diff+=Math.PI*2;
-            vrm.scene.rotation.y+=diff*0.02; // very slow drift toward camera
+            vrm.scene.rotation.y+=diff*0.02;
         }
     }
 
