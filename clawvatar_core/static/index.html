@@ -516,7 +516,7 @@ function setSpeakingState(speaking){
     if(speaking===isSpeaking)return;
     isSpeaking=speaking;
     const now=performance.now();
-    if(now-lastSpeakChange<800)return; // debounce camera changes
+    if(now-lastSpeakChange<300)return; // quick debounce
     lastSpeakChange=now;
     const shot=pickCameraShot(speaking);
     camMode=shot.mode;
@@ -582,35 +582,35 @@ function updateScene(dt){
             vrm.scene.position.y*=0.9; // settle
         }
     } else {
-        // When speaking, face camera and stop walking
+        // When speaking: always face the camera (fast, smooth)
         const camDir=Math.atan2(cam.position.x-vrm.scene.position.x, cam.position.z-vrm.scene.position.z);
-        const targetRot=camDir;
-        let diff=targetRot-vrm.scene.rotation.y;
+        let diff=camDir-vrm.scene.rotation.y;
         while(diff>Math.PI)diff-=Math.PI*2;
         while(diff<-Math.PI)diff+=Math.PI*2;
-        vrm.scene.rotation.y+=diff*0.08;
-        vrm.scene.position.y*=0.9;
+        vrm.scene.rotation.y+=diff*0.25; // much faster — 0.08 → 0.25
+        vrm.scene.position.y*=0.85;
     }
 
     // ── Cinematic camera (smooth follow) ──
     const avPos=vrm.scene.position;
 
     if(camMode==='laptop'){
-        // Laptop webcam POV — camera positioned at laptop's camera dot,
-        // looking at the avatar's face
+        // Laptop webcam POV — position camera a bit back from laptop for wider framing
         const lcam=getLaptopCameraWorldPose();
+        // Pull camera slightly back and up from the laptop cam dot
         _camPos.copy(lcam.pos);
-        // Look at avatar's face (head height)
-        const faceHeight=1.55;
-        _camLook.set(avPos.x, faceHeight, avPos.z);
-        cam.position.lerp(_camPos, 0.06); // slightly faster transition for the cut
-        ctrl.target.lerp(_camLook, 0.08);
+        _camPos.z+=0.3; // back toward viewer side
+        _camPos.y+=0.05;
+        // Look at avatar's upper chest (shows face + shoulders, not too close)
+        _camLook.set(avPos.x, 1.35, avPos.z);
+        cam.position.lerp(_camPos, 0.15); // fast smooth transition
+        ctrl.target.lerp(_camLook, 0.18);
     } else {
         // Normal cinematic shot — relative to avatar position
         _camPos.set(avPos.x+camTargetPos.x, camTargetPos.y, avPos.z+camTargetPos.z);
         _camLook.set(avPos.x+camTargetLook.x, camTargetLook.y, avPos.z+camTargetLook.z);
-        cam.position.lerp(_camPos, 0.04);
-        ctrl.target.lerp(_camLook, 0.05);
+        cam.position.lerp(_camPos, 0.08); // was 0.04 — faster
+        ctrl.target.lerp(_camLook, 0.1);
     }
 }
 </script>
