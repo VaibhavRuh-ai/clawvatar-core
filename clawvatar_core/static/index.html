@@ -288,43 +288,7 @@ frame.position.set(-1.8,2.0,-ROOM_D/2+0.02);roomGroup.add(frame);
 const frameInner=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.3),new THREE.MeshStandardMaterial({color:0xc8b890}));
 frameInner.position.set(-1.8,2.0,-ROOM_D/2+0.025);roomGroup.add(frameInner);
 
-// === Foreground Desk with Laptop (user's POV) ===
-const fgDesk=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.04,0.6),deskTopMat);
-fgDesk.position.set(0,0.75,1.3);fgDesk.castShadow=true;fgDesk.receiveShadow=true;roomGroup.add(fgDesk);
-[[-0.7,1.0],[0.7,1.0],[-0.7,1.6],[0.7,1.6]].forEach(p=>{
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.75,0.05),legMat);
-    leg.position.set(p[0],0.375,p[1]);leg.castShadow=true;roomGroup.add(leg);
-});
-
-// Laptop
-const laptopGroup=new THREE.Group();
-laptopGroup.position.set(0,0.77,1.2); // on foreground desk
-// Laptop base
-const laptopBase=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.018,0.26),
-    new THREE.MeshStandardMaterial({color:0x2a2a32,roughness:0.4,metalness:0.6}));
-laptopBase.position.y=0.009;laptopBase.castShadow=true;laptopBase.receiveShadow=true;laptopGroup.add(laptopBase);
-// Keyboard (darker inset)
-const keyboard=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.002,0.15),new THREE.MeshStandardMaterial({color:0x1a1a22}));
-keyboard.position.set(0,0.019,0.03);laptopGroup.add(keyboard);
-// Trackpad
-const trackpad=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.001,0.08),new THREE.MeshStandardMaterial({color:0x3a3a42}));
-trackpad.position.set(0,0.02,-0.08);laptopGroup.add(trackpad);
-// Screen (hinged back, tilted slightly forward for the viewer)
-const screenHinge=new THREE.Group();
-screenHinge.position.set(0,0.018,0.13);
-screenHinge.rotation.x=-Math.PI*0.1; // laptop open, screen nearly vertical facing viewer
-laptopGroup.add(screenHinge);
-const screenBack=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.22,0.015),
-    new THREE.MeshStandardMaterial({color:0x2a2a32,roughness:0.4,metalness:0.6}));
-screenBack.position.y=0.11;screenBack.castShadow=true;screenHinge.add(screenBack);
-// Screen display (glowing blue-ish to show "camera feed")
-const screenDisplay=new THREE.Mesh(new THREE.PlaneGeometry(0.32,0.18),
-    new THREE.MeshBasicMaterial({color:0x60a5fa}));
-screenDisplay.position.set(0,0.11,0.008);screenHinge.add(screenDisplay);
-// Camera dot above screen
-const laptopCam=new THREE.Mesh(new THREE.CircleGeometry(0.004,8),new THREE.MeshStandardMaterial({color:0x0a0a0a}));
-laptopCam.position.set(0,0.21,0.009);screenHinge.add(laptopCam);
-roomGroup.add(laptopGroup);
+// (foreground desk + laptop removed)
 
 // === More room elements ===
 
@@ -446,18 +410,7 @@ trimLeft.rotation.y=Math.PI/2;trimLeft.position.set(-ROOM_W/2+0.01,0.05,0);roomG
 const trimRight=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D,0.1,0.02),trimMat);
 trimRight.rotation.y=Math.PI/2;trimRight.position.set(ROOM_W/2-0.01,0.05,0);roomGroup.add(trimRight);
 
-// Helper: compute laptop's camera world position + look direction
-// Laptop camera is at laptopGroup.position + hinge offset, looking toward -Z (avatar)
-function getLaptopCameraWorldPose(){
-    // Camera dot world position
-    const dotWorld=new THREE.Vector3();
-    laptopCam.getWorldPosition(dotWorld);
-    // Screen faces avatar — screen normal in world space
-    const fwd=new THREE.Vector3(0,0,1);
-    screenHinge.getWorldDirection(fwd);
-    fwd.negate(); // camera looks opposite of screen normal direction
-    return {pos:dotWorld, forward:fwd};
-}
+// (laptop helper removed)
 
 scene.add(roomGroup);
 
@@ -609,9 +562,8 @@ walkPath=[
 
 function pickCameraShot(speaking){
     if(speaking){
-        // Speaking — camera transitions TO laptop webcam POV
-        // We return special mode that updateScene handles dynamically
-        return {mode:'laptop', pos:null, look:null};
+        // Speaking — medium shot, eye level, looking at face
+        return {mode:'medium', pos:new THREE.Vector3(0, 1.55, 1.8), look:new THREE.Vector3(0, 1.45, 0)};
     } else {
         // Idle — wider shots showing the bigger room
         const shots=[
@@ -698,22 +650,11 @@ function updateScene(dt){
     // ── Cinematic camera (smooth follow) ──
     const avPos=vrm.scene.position;
 
-    if(camMode==='laptop'){
-        // Video call POV — frame like a webcam: eye-level, face + upper torso
-        // Laptop is at z=1.2, avatar at z=-0.4 (distance ~1.6m — natural webcam distance)
-        // Place camera slightly above laptop screen, centered
-        _camPos.set(0, 1.55, 1.3);  // just above the laptop screen at eye level
-        // Look at avatar's face
-        _camLook.set(avPos.x, 1.55, avPos.z);
-        cam.position.lerp(_camPos, 0.12);
-        ctrl.target.lerp(_camLook, 0.15);
-    } else {
-        // Normal cinematic shot — relative to avatar position
-        _camPos.set(avPos.x+camTargetPos.x, camTargetPos.y, avPos.z+camTargetPos.z);
-        _camLook.set(avPos.x+camTargetLook.x, camTargetLook.y, avPos.z+camTargetLook.z);
-        cam.position.lerp(_camPos, 0.08); // was 0.04 — faster
-        ctrl.target.lerp(_camLook, 0.1);
-    }
+    // Normal cinematic shot — relative to avatar position
+    _camPos.set(avPos.x+camTargetPos.x, camTargetPos.y, avPos.z+camTargetPos.z);
+    _camLook.set(avPos.x+camTargetLook.x, camTargetLook.y, avPos.z+camTargetLook.z);
+    cam.position.lerp(_camPos, 0.08);
+    ctrl.target.lerp(_camLook, 0.1);
 }
 </script>
 
