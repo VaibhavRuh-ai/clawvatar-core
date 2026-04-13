@@ -391,6 +391,8 @@ window.loadAvatar=async function(path){
         if(vrm){scene.add(vrm.scene);
         // Position avatar in the room (standing on floor, slightly in front of desk)
         vrm.scene.position.set(0,0,-0.4);
+        // VRM models face -Z by default — rotate 180° so face looks toward camera (+Z)
+        vrm.scene.rotation.y=Math.PI;
         vrm.scene.traverse(function(o){if(o.isMesh){o.castShadow=true;}});
         // Front-facing camera at eye level
         cam.position.set(0,1.5,1.6);ctrl.target.set(0,1.4,0);ctrl.update();
