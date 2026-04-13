@@ -205,7 +205,7 @@ ctrl.update();
 
 // === 3D Room ===
 const roomGroup=new THREE.Group();
-const ROOM_W=6, ROOM_D=4, ROOM_H=3;
+const ROOM_W=10, ROOM_D=8, ROOM_H=3.5;
 
 // Floor — wood texture (procedural)
 function makeWoodTexture(){
@@ -337,6 +337,126 @@ const laptopCam=new THREE.Mesh(new THREE.CircleGeometry(0.004,8),new THREE.MeshS
 laptopCam.position.set(0,0.21,0.009);screenHinge.add(laptopCam);
 roomGroup.add(laptopGroup);
 
+// === More room elements ===
+
+// Large rug under main area
+const rugMat=new THREE.MeshStandardMaterial({color:0x8b3a3a,roughness:0.9});
+const rug=new THREE.Mesh(new THREE.PlaneGeometry(4,3),rugMat);
+rug.rotation.x=-Math.PI/2;rug.position.set(0,0.001,-0.5);rug.receiveShadow=true;roomGroup.add(rug);
+// Rug pattern
+const rugPatternMat=new THREE.MeshStandardMaterial({color:0x6a2828,roughness:0.9});
+const rugBorder=new THREE.Mesh(new THREE.RingGeometry(1.4,1.6,32),rugPatternMat);
+rugBorder.rotation.x=-Math.PI/2;rugBorder.position.set(0,0.002,-0.5);roomGroup.add(rugBorder);
+
+// Bookshelf on left wall
+const shelfMat=new THREE.MeshStandardMaterial({color:0x5a3a2a,roughness:0.7});
+const shelfBack=new THREE.Mesh(new THREE.BoxGeometry(0.1,2.4,1.8),shelfMat);
+shelfBack.position.set(-ROOM_W/2+0.05,1.2,-2);shelfBack.castShadow=true;roomGroup.add(shelfBack);
+for(let i=0;i<5;i++){
+    const shelf=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.04,1.7),shelfMat);
+    shelf.position.set(-ROOM_W/2+0.25,0.4+i*0.48,-2);shelf.castShadow=true;shelf.receiveShadow=true;roomGroup.add(shelf);
+    // Books on shelves
+    for(let b=0;b<6;b++){
+        const h=0.28+Math.random()*0.12;
+        const book=new THREE.Mesh(
+            new THREE.BoxGeometry(0.25,h,0.05+Math.random()*0.08),
+            new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(Math.random(),0.5,0.35+Math.random()*0.2),roughness:0.7})
+        );
+        book.position.set(-ROOM_W/2+0.3,0.4+i*0.48+h/2+0.02,-2.7+b*0.27);
+        book.castShadow=true;
+        roomGroup.add(book);
+    }
+}
+
+// Couch on right side
+const couchMat=new THREE.MeshStandardMaterial({color:0x3a4a5a,roughness:0.8});
+const couchBase=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.4,0.9),couchMat);
+couchBase.position.set(ROOM_W/2-1.2,0.25,-2.5);couchBase.castShadow=true;couchBase.receiveShadow=true;roomGroup.add(couchBase);
+const couchBack=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.6,0.2),couchMat);
+couchBack.position.set(ROOM_W/2-1.2,0.7,-2.9);couchBack.castShadow=true;roomGroup.add(couchBack);
+const couchArmL=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.55,0.9),couchMat);
+couchArmL.position.set(ROOM_W/2-2.1,0.45,-2.5);couchArmL.castShadow=true;roomGroup.add(couchArmL);
+const couchArmR=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.55,0.9),couchMat);
+couchArmR.position.set(ROOM_W/2-0.3,0.45,-2.5);couchArmR.castShadow=true;roomGroup.add(couchArmR);
+// Cushions
+for(let i=0;i<3;i++){
+    const cush=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.15,0.8),
+        new THREE.MeshStandardMaterial({color:0x4a5a6a,roughness:0.85}));
+    cush.position.set(ROOM_W/2-2.05+i*0.65,0.53,-2.5);cush.castShadow=true;roomGroup.add(cush);
+}
+// Throw pillow
+const pillow=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.15),
+    new THREE.MeshStandardMaterial({color:0xc8a888,roughness:0.9}));
+pillow.position.set(ROOM_W/2-1.9,0.8,-2.7);pillow.rotation.z=0.2;pillow.castShadow=true;roomGroup.add(pillow);
+
+// Coffee table in front of couch
+const tableTop=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.04,0.6),
+    new THREE.MeshStandardMaterial({color:0x6B5537,roughness:0.4}));
+tableTop.position.set(ROOM_W/2-1.5,0.45,-1.6);tableTop.castShadow=true;tableTop.receiveShadow=true;roomGroup.add(tableTop);
+[[ROOM_W/2-1.9,-1.4],[ROOM_W/2-1.1,-1.4],[ROOM_W/2-1.9,-1.8],[ROOM_W/2-1.1,-1.8]].forEach(p=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.45,8),legMat);
+    leg.position.set(p[0],0.225,p[1]);leg.castShadow=true;roomGroup.add(leg);
+});
+// Coffee mug on table
+const mug=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.04,0.1,16),
+    new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.5}));
+mug.position.set(ROOM_W/2-1.7,0.52,-1.55);mug.castShadow=true;roomGroup.add(mug);
+
+// Large wall art (big painting) on back wall
+const artMat=new THREE.MeshStandardMaterial({color:0x2a2a3a});
+const art=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.0),artMat);
+art.position.set(2.5,2.1,-ROOM_D/2+0.02);roomGroup.add(art);
+// Abstract art pattern (colored rectangles)
+[[0x8b4a6a,0.3,0.2,-0.3,0.1],[0xc8a84a,0.25,0.3,0.2,-0.1],[0x4a8b6a,0.2,0.15,-0.1,-0.25],[0x6a4a8b,0.35,0.18,0.3,0.25]].forEach(c=>{
+    const rect=new THREE.Mesh(new THREE.PlaneGeometry(c[1],c[2]),new THREE.MeshStandardMaterial({color:c[0]}));
+    rect.position.set(2.5+c[3],2.1+c[4],-ROOM_D/2+0.025);
+    roomGroup.add(rect);
+});
+// Art frame
+const artFrame=new THREE.Mesh(new THREE.PlaneGeometry(1.7,1.1),new THREE.MeshStandardMaterial({color:0x1a1a22}));
+artFrame.position.set(2.5,2.1,-ROOM_D/2+0.015);roomGroup.add(artFrame);
+
+// Larger plant in opposite corner
+const bigPot=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.2,0.4,16),
+    new THREE.MeshStandardMaterial({color:0x8a6a4a,roughness:0.9}));
+bigPot.position.set(ROOM_W/2-0.6,0.2,-0.8);bigPot.castShadow=true;roomGroup.add(bigPot);
+// Tall leaves
+for(let i=0;i<8;i++){
+    const leaf=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8),leafMat);
+    const a=(i/8)*Math.PI*2;const h=Math.random()*0.4;
+    leaf.position.set(ROOM_W/2-0.6+Math.cos(a)*0.15,0.55+h,-0.8+Math.sin(a)*0.15);
+    leaf.scale.set(1,1.5,1);leaf.castShadow=true;roomGroup.add(leaf);
+}
+
+// Window curtains (two panels)
+const curtainMat=new THREE.MeshStandardMaterial({color:0xdcd4c4,roughness:0.95});
+const curtainL=new THREE.Mesh(new THREE.PlaneGeometry(0.5,2.0),curtainMat);
+curtainL.position.set(-1.1,1.7,-ROOM_D/2+0.08);roomGroup.add(curtainL);
+const curtainR=new THREE.Mesh(new THREE.PlaneGeometry(0.5,2.0),curtainMat);
+curtainR.position.set(1.1,1.7,-ROOM_D/2+0.08);roomGroup.add(curtainR);
+// Curtain rod
+const rod=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,3,8),legMat);
+rod.rotation.z=Math.PI/2;rod.position.set(0,2.8,-ROOM_D/2+0.08);roomGroup.add(rod);
+
+// Ceiling pendant lights (2)
+[-2,2].forEach(x=>{
+    const cord=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.005,0.8,6),new THREE.MeshStandardMaterial({color:0x222}));
+    cord.position.set(x,ROOM_H-0.4,0);roomGroup.add(cord);
+    const pendant=new THREE.Mesh(new THREE.SphereGeometry(0.12,16,16),
+        new THREE.MeshStandardMaterial({color:0xfff5dc,emissive:0xfff5dc,emissiveIntensity:0.6}));
+    pendant.position.set(x,ROOM_H-0.8,0);roomGroup.add(pendant);
+    const pl=new THREE.PointLight(0xfff5dc,0.3,3);pl.position.set(x,ROOM_H-0.8,0);roomGroup.add(pl);
+});
+
+// Baseboard trim around walls
+const trimMat=new THREE.MeshStandardMaterial({color:0xf0ebe0,roughness:0.7});
+const trimBack=new THREE.Mesh(new THREE.BoxGeometry(ROOM_W,0.1,0.02),trimMat);
+trimBack.position.set(0,0.05,-ROOM_D/2+0.01);roomGroup.add(trimBack);
+const trimLeft=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D,0.1,0.02),trimMat);
+trimLeft.rotation.y=Math.PI/2;trimLeft.position.set(-ROOM_W/2+0.01,0.05,0);roomGroup.add(trimLeft);
+const trimRight=new THREE.Mesh(new THREE.BoxGeometry(ROOM_D,0.1,0.02),trimMat);
+trimRight.rotation.y=Math.PI/2;trimRight.position.set(ROOM_W/2-0.01,0.05,0);roomGroup.add(trimRight);
+
 // Helper: compute laptop's camera world position + look direction
 // Laptop camera is at laptopGroup.position + hinge offset, looking toward -Z (avatar)
 function getLaptopCameraWorldPose(){
@@ -358,8 +478,8 @@ scene.add(new THREE.AmbientLight(0xfff0e0,0.5));
 const sunLight=new THREE.DirectionalLight(0xfff5dc,1.0);
 sunLight.position.set(0,3,-2);sunLight.castShadow=true;
 sunLight.shadow.mapSize.width=1024;sunLight.shadow.mapSize.height=1024;
-sunLight.shadow.camera.left=-3;sunLight.shadow.camera.right=3;
-sunLight.shadow.camera.top=3;sunLight.shadow.camera.bottom=-3;
+sunLight.shadow.camera.left=-5;sunLight.shadow.camera.right=5;
+sunLight.shadow.camera.top=5;sunLight.shadow.camera.bottom=-5;
 scene.add(sunLight);
 // Fill light from front (warm)
 const fill=new THREE.DirectionalLight(0xfff0d4,0.6);fill.position.set(0,2,3);scene.add(fill);
@@ -485,13 +605,15 @@ let camTargetLook=new THREE.Vector3(0,1.4,0);
 let lastSpeakChange=0;
 
 // Walk waypoints in the room (avatar wanders here when idle)
-// Avatar stays in the back half of the room (away from foreground laptop desk)
+// Avatar walks around the bigger room (avoiding furniture)
 walkPath=[
-    {x:0, z:-0.6, look:0},
-    {x:-1.0, z:-0.8, look:Math.PI*0.2},
-    {x:1.0, z:-0.7, look:-Math.PI*0.15},
-    {x:0, z:-0.3, look:0},
-    {x:-0.6, z:-0.5, look:Math.PI*0.1},
+    {x:0, z:-0.8, look:0},
+    {x:-1.5, z:-1.0, look:Math.PI*0.3},
+    {x:1.5, z:-1.0, look:-Math.PI*0.2},
+    {x:0, z:-0.2, look:0},
+    {x:-2.0, z:-0.3, look:Math.PI*0.2},
+    {x:0.5, z:-1.8, look:0},
+    {x:-0.8, z:-0.5, look:Math.PI*0.15},
 ];
 
 function pickCameraShot(speaking){
@@ -500,13 +622,14 @@ function pickCameraShot(speaking){
         // We return special mode that updateScene handles dynamically
         return {mode:'laptop', pos:null, look:null};
     } else {
-        // Idle — wider shots showing the room with laptop in foreground
+        // Idle — wider shots showing the bigger room
         const shots=[
-            {mode:'wide', pos:new THREE.Vector3(0, 1.7, 3.0), look:new THREE.Vector3(0, 1.2, 0)},
-            {mode:'side', pos:new THREE.Vector3(2.2, 1.6, 1.8), look:new THREE.Vector3(0, 1.2, 0)},
-            {mode:'side', pos:new THREE.Vector3(-2.2, 1.6, 1.8), look:new THREE.Vector3(0, 1.2, 0)},
-            {mode:'wide', pos:new THREE.Vector3(1.0, 1.8, 2.8), look:new THREE.Vector3(0, 1.2, 0)},
-            {mode:'wide', pos:new THREE.Vector3(-1.0, 1.8, 2.8), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'wide', pos:new THREE.Vector3(0, 1.8, 4.0), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'side', pos:new THREE.Vector3(3.0, 1.7, 2.5), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'side', pos:new THREE.Vector3(-3.0, 1.7, 2.5), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'wide', pos:new THREE.Vector3(1.5, 2.0, 3.8), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'wide', pos:new THREE.Vector3(-1.5, 2.0, 3.8), look:new THREE.Vector3(0, 1.2, 0)},
+            {mode:'high', pos:new THREE.Vector3(0, 2.8, 3.5), look:new THREE.Vector3(0, 1.1, 0)},
         ];
         return shots[Math.floor(Math.random()*shots.length)];
     }
