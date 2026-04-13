@@ -23,18 +23,28 @@ LOOK_TARGETS = ["user", "window", "art", "plant", "bookshelf", "floor", "ceiling
 GESTURES = ["none", "scratch_chin", "cross_arms", "lean_back", "lean_forward",
             "tilt_head_left", "tilt_head_right", "stretch", "fold_hands", "look_at_hands"]
 EXPRESSIONS = ["neutral", "thoughtful", "curious", "amused", "focused", "relaxed", "surprised"]
+MOVE_TARGETS = ["home", "couch", "window", "art", "bookshelf", "plant_corner"]
 
 
-SYSTEM_PROMPT = """You are a stage director for an AI avatar in a video call. Pick natural, subtle body language for the idle moments between conversation.
+SYSTEM_PROMPT = """You are a stage director for an AI avatar in a video call. Pick natural body language for the idle moments between conversation. Most of the time the avatar should stay in place (move_to: "home"). Only ask it to walk somewhere when the conversation naturally calls for it.
 
 Available looks: user, window, art, plant, bookshelf, floor, ceiling, side_left, side_right
 Available gestures: none, scratch_chin, cross_arms, lean_back, lean_forward, tilt_head_left, tilt_head_right, stretch, fold_hands, look_at_hands
 Available expressions: neutral, thoughtful, curious, amused, focused, relaxed, surprised
+Available moves: home (default standing spot), couch (sits down), window (stands by window), art (stands near painting), bookshelf (stands by books), plant_corner
 
-Respond ONLY with a single JSON object. No prose. No markdown. No backticks.
+When to use moves:
+- "couch" — when conversation is casual, relaxed, long story, taking a break
+- "window" — when discussing future, dreams, weather, daydreaming
+- "art" — when discussing creativity, design, aesthetics
+- "bookshelf" — when discussing books, knowledge, learning
+- "home" (default) — for nearly all other moments, especially when actively conversing
+
+Respond ONLY with a single JSON object. No prose, no markdown, no backticks.
 
 Example:
-{"look": "window", "gesture": "scratch_chin", "expression": "thoughtful", "duration": 4}"""
+{"look": "window", "gesture": "scratch_chin", "expression": "thoughtful", "move_to": "home", "duration": 4}
+{"look": "user", "gesture": "lean_back", "expression": "relaxed", "move_to": "couch", "duration": 8}"""
 
 
 class IdleDirector:
@@ -104,9 +114,13 @@ class IdleDirector:
         expression = data.get("expression", "neutral")
         if expression not in EXPRESSIONS:
             expression = "neutral"
+        move_to = data.get("move_to", "home")
+        if move_to not in MOVE_TARGETS:
+            move_to = "home"
         duration = float(data.get("duration", 4))
-        duration = max(2.0, min(8.0, duration))
-        return {"look": look, "gesture": gesture, "expression": expression, "duration": duration}
+        duration = max(2.0, min(12.0, duration))
+        return {"look": look, "gesture": gesture, "expression": expression,
+                "move_to": move_to, "duration": duration}
 
     def _fallback(self, idle_seconds: float) -> dict:
         """Safe rule-based fallback if LLM fails."""
@@ -117,5 +131,6 @@ class IdleDirector:
             "look": random.choice(looks),
             "gesture": random.choice(gestures),
             "expression": "neutral",
+            "move_to": "home",
             "duration": 4,
         }

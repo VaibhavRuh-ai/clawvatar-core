@@ -562,21 +562,31 @@ window.loadAvatar=async function(path){
 window.setAnimTarget=function(w,h){tgtW=w;tgtH=h;};
 window.resizeRenderer=rsz;
 
-// === Director: idle action targets (set async by LLM, applied per frame) ===
+// === Director: idle action targets ===
 const LOOK_TARGETS={
-    user:    new THREE.Vector3(0, 1.5, 3),       // toward camera
-    window:  new THREE.Vector3(0, 1.7, -4),       // back wall window
-    art:     new THREE.Vector3(2.5, 2.1, -4),     // art piece
-    plant:   new THREE.Vector3(4.4, 0.5, -0.8),   // plant in corner
-    bookshelf: new THREE.Vector3(-5, 1.5, -2),    // bookshelf
+    user:    new THREE.Vector3(0, 1.5, 3),
+    window:  new THREE.Vector3(0, 1.7, -4),
+    art:     new THREE.Vector3(2.5, 2.1, -4),
+    plant:   new THREE.Vector3(4.4, 0.5, -0.8),
+    bookshelf: new THREE.Vector3(-5, 1.5, -2),
     floor:   new THREE.Vector3(0, 0, 0.5),
     ceiling: new THREE.Vector3(0, 3, 0),
     side_left: new THREE.Vector3(-3, 1.5, 1),
     side_right: new THREE.Vector3(3, 1.5, 1),
 };
-let _lookTarget=new THREE.Vector3(0, 1.5, 3); // default: user
+// Position targets for "move_to" actions
+const MOVE_TARGETS={
+    home:         {x: 0,    z: -0.4, y: 0,    facing: 'camera', sit: false},
+    couch:        {x: 3.5,  z: -2.3, y: 0.55, facing: 'camera', sit: true},  // sits on couch facing forward
+    window:       {x: 0,    z: -3.2, y: 0,    facing: 'window', sit: false},
+    art:          {x: 2.5,  z: -3.2, y: 0,    facing: 'art',    sit: false},
+    bookshelf:    {x: -3.8, z: -1.5, y: 0,    facing: 'bookshelf', sit: false},
+    plant_corner: {x: 3.0,  z: -1.0, y: 0,    facing: 'camera', sit: false},
+};
+let _lookTarget=new THREE.Vector3(0, 1.5, 3);
 let _lookCurrent=new THREE.Vector3(0, 1.5, 3);
 let _gesture='none', _expression='neutral', _actionEndTime=0, _lastAction='';
+let _moveTarget='home', _isSitting=false, _walkPhase=0;
 const _gestureMap={
     'scratch_chin':{leftArmZ:1.2, rightArmZ:-0.5, headTilt:0.1},
     'cross_arms':{leftArmZ:0.4, rightArmZ:-0.4},
@@ -590,10 +600,11 @@ const _gestureMap={
     'none':{},
 };
 window.setDirectorAction=function(action){
-    _lastAction=action.gesture+'/'+action.look;
+    _lastAction=(action.move_to||'home')+'/'+action.gesture+'/'+action.look;
     _lookTarget.copy(LOOK_TARGETS[action.look]||LOOK_TARGETS.user);
     _gesture=action.gesture||'none';
     _expression=action.expression||'neutral';
+    _moveTarget=action.move_to||'home';
     _actionEndTime=performance.now()+(action.duration||4)*1000;
 };
 
@@ -691,21 +702,99 @@ function updateScene(dt){
     if(!vrm)return;
     if(!cinematicMode)return;
 
-    // Avatar stays at HOME — never walks
-    vrm.scene.position.x+=(HOME.x-vrm.scene.position.x)*0.15;
-    vrm.scene.position.z+=(HOME.z-vrm.scene.position.z)*0.15;
-    vrm.scene.position.y*=0.9; // settle to floor
+    const speakingNow=isSpeaking;
 
-    // Always face the camera (VRM default faces -Z, so add π)
+    // Target position from director's move_to (when speaking, force home)
+    const tgtSpot = speakingNow ? MOVE_TARGETS.home : (MOVE_TARGETS[_moveTarget]||MOVE_TARGETS.home);
     const cx=vrm.scene.position.x, cz=vrm.scene.position.z;
-    const camDir=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
-    let diff=camDir-vrm.scene.rotation.y;
-    while(diff>Math.PI)diff-=Math.PI*2;
-    while(diff<-Math.PI)diff+=Math.PI*2;
-    vrm.scene.rotation.y+=diff*0.15;
+    const dx=tgtSpot.x-cx, dz=tgtSpot.z-cz;
+    const dist=Math.sqrt(dx*dx+dz*dz);
+
+    // Walking toward target
+    if(dist>0.08){
+        const speed=Math.min(0.9, dist*1.5)*dt; // slower as we approach
+        vrm.scene.position.x+=dx/dist*speed;
+        vrm.scene.position.z+=dz/dist*speed;
+        // Face walking direction (VRM faces -Z, so add π)
+        const walkRot=Math.atan2(dx, dz)+Math.PI;
+        let rdiff=walkRot-vrm.scene.rotation.y;
+        while(rdiff>Math.PI)rdiff-=Math.PI*2;
+        while(rdiff<-Math.PI)rdiff+=Math.PI*2;
+        vrm.scene.rotation.y+=rdiff*0.12;
+        // Walking animation: leg + arm pendulum
+        _walkPhase+=dt*7;
+        const swing=Math.sin(_walkPhase);
+        try{
+            const h=vrm.humanoid;
+            const lul=h.getNormalizedBoneNode('leftUpperLeg');
+            const rul=h.getNormalizedBoneNode('rightUpperLeg');
+            const lll=h.getNormalizedBoneNode('leftLowerLeg');
+            const rll=h.getNormalizedBoneNode('rightLowerLeg');
+            const lua=h.getNormalizedBoneNode('leftUpperArm');
+            const rua=h.getNormalizedBoneNode('rightUpperArm');
+            if(lul) lul.rotation.x=swing*0.5;
+            if(rul) rul.rotation.x=-swing*0.5;
+            if(lll) lll.rotation.x=Math.max(0,-swing*0.3);
+            if(rll) rll.rotation.x=Math.max(0,swing*0.3);
+            // Arms swing opposite to legs (realistic gait)
+            if(lua) lua.rotation.x=swing*0.3;
+            if(rua) rua.rotation.x=-swing*0.3;
+            if(lua) lua.rotation.z=lua.rotation.z*0.8+1.0*0.2;
+            if(rua) rua.rotation.z=rua.rotation.z*0.8+(-1.0)*0.2;
+        }catch(e){}
+        // Body bob
+        vrm.scene.position.y=tgtSpot.y+Math.abs(swing)*0.04;
+        _isSitting=false;
+    } else {
+        // Arrived — face direction based on target's facing
+        let targetRot=Math.PI; // default face camera (+Z)
+        if(tgtSpot.facing==='camera'){
+            targetRot=Math.atan2(cam.position.x-cx, cam.position.z-cz)+Math.PI;
+        } else if(tgtSpot.facing==='window'){
+            targetRot=Math.atan2(0-cx, -4-cz)+Math.PI; // face toward window (-z)
+        } else if(tgtSpot.facing==='art'){
+            targetRot=Math.atan2(2.5-cx, -4-cz)+Math.PI;
+        } else if(tgtSpot.facing==='bookshelf'){
+            targetRot=Math.atan2(-5-cx, -2-cz)+Math.PI;
+        }
+        let rdiff=targetRot-vrm.scene.rotation.y;
+        while(rdiff>Math.PI)rdiff-=Math.PI*2;
+        while(rdiff<-Math.PI)rdiff+=Math.PI*2;
+        vrm.scene.rotation.y+=rdiff*0.12;
+
+        // Smoothly return legs/arms to rest
+        try{
+            const h=vrm.humanoid;
+            ['leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg','leftUpperArm','rightUpperArm'].forEach(function(n){
+                const b=h.getNormalizedBoneNode(n);
+                if(b)b.rotation.x*=0.85;
+            });
+        }catch(e){}
+
+        // Sit pose if target requires it
+        if(tgtSpot.sit){
+            _isSitting=true;
+            // Apply sitting bones: hips down, legs bent forward
+            try{
+                const h=vrm.humanoid;
+                const hips=h.getNormalizedBoneNode('hips');
+                const lul=h.getNormalizedBoneNode('leftUpperLeg');
+                const rul=h.getNormalizedBoneNode('rightUpperLeg');
+                const lll=h.getNormalizedBoneNode('leftLowerLeg');
+                const rll=h.getNormalizedBoneNode('rightLowerLeg');
+                if(lul) lul.rotation.x=lul.rotation.x*0.85+(-Math.PI*0.5)*0.15;
+                if(rul) rul.rotation.x=rul.rotation.x*0.85+(-Math.PI*0.5)*0.15;
+                if(lll) lll.rotation.x=lll.rotation.x*0.85+(Math.PI*0.5)*0.15;
+                if(rll) rll.rotation.x=rll.rotation.x*0.85+(Math.PI*0.5)*0.15;
+            }catch(e){}
+            vrm.scene.position.y=tgtSpot.y;
+        } else {
+            _isSitting=false;
+            vrm.scene.position.y*=0.9;
+        }
+    }
 
     // ── Director look target (applied in render loop, not here) ──
-    const speakingNow=isSpeaking;
     const targetLook=speakingNow ? new THREE.Vector3(cam.position.x, 1.5, cam.position.z) : _lookTarget;
     _lookCurrent.lerp(targetLook, 0.04);
 
