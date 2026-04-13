@@ -50,7 +50,7 @@ Example:
 class IdleDirector:
     """Calls Gemini Flash Lite to pick avatar actions during idle moments."""
 
-    def __init__(self, api_key: str = "", model: str = "gemini-2.0-flash-lite"):
+    def __init__(self, api_key: str = "", model: str = "gemini-2.5-flash-lite"):
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
         self.model = model
         self._client = None
