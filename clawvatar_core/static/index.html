@@ -151,6 +151,8 @@ input[type=file]{display:none}
                 <button class="bg-swatch" data-bg="office" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:linear-gradient(180deg,#d4d0c8 50%,#8a8780 50%)" title="Office"></button>
                 <button onclick="document.getElementById('bgImage').click()" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#222;color:#aaa;font-size:11px" title="Upload image">📷</button>
                 <input type="file" id="bgImage" accept="image/*" style="display:none">
+                <span style="width:1px;height:18px;background:#333;margin:0 4px"></span>
+                <button id="cineBtn" onclick="toggleCinematic()" style="padding:2px 8px;border-radius:4px;border:1px solid #555;cursor:pointer;background:#7c6ef0;color:#fff;font-size:10px" title="Toggle cinematic camera">🎬 Auto</button>
             </div>
         </div>
         <div class="call-sidebar">
@@ -198,6 +200,7 @@ ctrl.target.set(0,1.4,0);  // looking at face
 ctrl.enableDamping=true;
 ctrl.minDistance=1.0;ctrl.maxDistance=4.0;
 ctrl.minPolarAngle=Math.PI*0.25;ctrl.maxPolarAngle=Math.PI*0.65;  // limit vertical
+ctrl.enabled=false; // start in cinematic mode
 ctrl.update();
 
 // === 3D Room ===
@@ -330,10 +333,14 @@ function rsz(){
 addEventListener('resize',rsz);
 
 function anim(){
-    requestAnimationFrame(anim);ctrl.update();
+    requestAnimationFrame(anim);
+    const dt=clk.getDelta();
+    ctrl.update();
+    // Cinematic scene update — runs only after avatar loaded
+    if(typeof updateScene==='function')updateScene(dt);
     for(const k of new Set([...Object.keys(curW),...Object.keys(tgtW)])){const c=curW[k]||0,t=tgtW[k]||0,v=lerp(c,t,.25);if(v>.003)curW[k]=v;else delete curW[k];}
     curH.y=lerp(curH.y,tgtH.y,.12);curH.p=lerp(curH.p,tgtH.p,.12);curH.r=lerp(curH.r,tgtH.r,.12);
-    if(vrm){const em=vrm.expressionManager;if(em){for(const n of Object.keys(em.expressionMap))try{em.setValue(n,0)}catch(e){}for(const[k,v] of Object.entries(curW))try{em.setValue(NM[k]||k,Math.min(1,v))}catch(e){}}if(hb){hb.rotation.y=curH.y*Math.PI/180;hb.rotation.x=curH.p*Math.PI/180;hb.rotation.z=curH.r*Math.PI/180;}vrm.update(clk.getDelta());}
+    if(vrm){const em=vrm.expressionManager;if(em){for(const n of Object.keys(em.expressionMap))try{em.setValue(n,0)}catch(e){}for(const[k,v] of Object.entries(curW))try{em.setValue(NM[k]||k,Math.min(1,v))}catch(e){}}if(hb){hb.rotation.y=curH.y*Math.PI/180;hb.rotation.x=curH.p*Math.PI/180;hb.rotation.z=curH.r*Math.PI/180;}vrm.update(dt);}
     R.render(scene,cam);fc++;if(performance.now()-ft>=1e3){document.getElementById('hFps').textContent=fc;fc=0;ft=performance.now();}
 }
 anim();
@@ -417,6 +424,133 @@ window.loadAvatar=async function(path){
 };
 window.setAnimTarget=function(w,h){tgtW=w;tgtH=h;};
 window.resizeRenderer=rsz;
+
+// === Cinematic Camera + Avatar Movement ===
+let cinematicMode=true;
+let isSpeaking=false, walkPhase=0, walkPath=[], pathIdx=0;
+let camMode='wide'; // 'wide' | 'closeup' | 'side'
+let camTargetPos=new THREE.Vector3(0,1.5,1.6);
+let camTargetLook=new THREE.Vector3(0,1.4,0);
+let lastSpeakChange=0;
+
+// Walk waypoints in the room (avatar wanders here when idle)
+walkPath=[
+    {x:0, z:-0.4, look:0},
+    {x:-0.8, z:-0.6, look:Math.PI*0.2},
+    {x:0.8, z:-0.5, look:-Math.PI*0.15},
+    {x:0, z:0.0, look:0},
+    {x:-0.5, z:-0.3, look:Math.PI*0.1},
+];
+
+function pickCameraShot(speaking){
+    if(speaking){
+        // Speaking — close-up on face, slight angle
+        const angle=(Math.random()-0.5)*0.6; // -0.3 to 0.3 rad
+        return {
+            mode:'closeup',
+            pos:new THREE.Vector3(Math.sin(angle)*1.0, 1.55, Math.cos(angle)*1.0),
+            look:new THREE.Vector3(0, 1.5, 0),
+        };
+    } else {
+        // Idle — varied shots
+        const shots=[
+            {mode:'wide', pos:new THREE.Vector3(0, 1.6, 2.2), look:new THREE.Vector3(0, 1.3, 0)},
+            {mode:'side', pos:new THREE.Vector3(1.5, 1.5, 1.2), look:new THREE.Vector3(0, 1.3, 0)},
+            {mode:'side', pos:new THREE.Vector3(-1.5, 1.5, 1.2), look:new THREE.Vector3(0, 1.3, 0)},
+            {mode:'wide', pos:new THREE.Vector3(0.6, 1.7, 2.0), look:new THREE.Vector3(0, 1.3, 0)},
+        ];
+        return shots[Math.floor(Math.random()*shots.length)];
+    }
+}
+
+function setSpeakingState(speaking){
+    if(speaking===isSpeaking)return;
+    isSpeaking=speaking;
+    const now=performance.now();
+    if(now-lastSpeakChange<800)return; // debounce camera changes
+    lastSpeakChange=now;
+    const shot=pickCameraShot(speaking);
+    camTargetPos.copy(shot.pos);
+    camTargetLook.copy(shot.look);
+    camMode=shot.mode;
+}
+
+// Periodically change camera angle even when speaking continuously
+setInterval(function(){
+    if(!vrm)return;
+    const shot=pickCameraShot(isSpeaking);
+    camTargetPos.copy(shot.pos);
+    camTargetLook.copy(shot.look);
+}, 8000);
+
+// Avatar walking and camera updates per frame
+const _camPos=new THREE.Vector3(), _camLook=new THREE.Vector3();
+let _walkTime=0, _walkTarget={x:0, z:-0.4, look:0}, _walkActive=false;
+
+window.toggleCinematic=function(){
+    cinematicMode=!cinematicMode;
+    const btn=document.getElementById('cineBtn');
+    if(cinematicMode){btn.style.background='#7c6ef0';btn.textContent='🎬 Auto';ctrl.enabled=false;}
+    else{btn.style.background='#333';btn.textContent='🖱 Manual';ctrl.enabled=true;}
+};
+
+function updateScene(dt){
+    if(!vrm)return;
+    if(!cinematicMode)return; // user has manual control
+
+    // ── Avatar walking (only when idle) ──
+    if(!isSpeaking){
+        _walkTime+=dt;
+        if(_walkTime>5 || !_walkActive){
+            _walkTime=0;
+            pathIdx=(pathIdx+1)%walkPath.length;
+            _walkTarget=walkPath[pathIdx];
+            _walkActive=true;
+        }
+        // Move toward target
+        const cx=vrm.scene.position.x, cz=vrm.scene.position.z;
+        const dx=_walkTarget.x-cx, dz=_walkTarget.z-cz;
+        const dist=Math.sqrt(dx*dx+dz*dz);
+        if(dist>0.05){
+            const speed=0.3*dt;
+            vrm.scene.position.x+=dx/dist*speed;
+            vrm.scene.position.z+=dz/dist*speed;
+            // Face walking direction
+            const targetRot=Math.atan2(dx,dz)+Math.PI;
+            const curRot=vrm.scene.rotation.y;
+            let rotDiff=targetRot-curRot;
+            while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
+            while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
+            vrm.scene.rotation.y+=rotDiff*0.05;
+            // Walking animation: subtle vertical bob
+            walkPhase+=dt*8;
+            vrm.scene.position.y=Math.abs(Math.sin(walkPhase))*0.04;
+        } else {
+            // Arrived — face camera angle from waypoint
+            const targetRot=Math.PI+_walkTarget.look;
+            vrm.scene.rotation.y+=(targetRot-vrm.scene.rotation.y)*0.05;
+            vrm.scene.position.y*=0.9; // settle
+        }
+    } else {
+        // When speaking, face camera and stop walking
+        const camDir=Math.atan2(cam.position.x-vrm.scene.position.x, cam.position.z-vrm.scene.position.z);
+        const targetRot=camDir;
+        let diff=targetRot-vrm.scene.rotation.y;
+        while(diff>Math.PI)diff-=Math.PI*2;
+        while(diff<-Math.PI)diff+=Math.PI*2;
+        vrm.scene.rotation.y+=diff*0.08;
+        vrm.scene.position.y*=0.9;
+    }
+
+    // ── Cinematic camera (smooth follow) ──
+    // Adjust target relative to avatar position
+    const avPos=vrm.scene.position;
+    _camPos.set(avPos.x+camTargetPos.x, camTargetPos.y, avPos.z+camTargetPos.z);
+    _camLook.set(avPos.x+camTargetLook.x, camTargetLook.y, avPos.z+camTargetLook.z);
+
+    cam.position.lerp(_camPos, 0.04);
+    ctrl.target.lerp(_camLook, 0.05);
+}
 </script>
 
 <script>
@@ -620,6 +754,8 @@ function connectAnimWs(){
             var w=m.weights||{},h=m.head||{};
             window.setAnimTarget(w,{y:h.yaw||0,p:h.pitch||0,r:h.roll||0});
             if(m.viseme)document.getElementById('hVis').textContent=m.viseme;
+            // Drive cinematic camera based on speaking state
+            if(typeof setSpeakingState==='function')setSpeakingState(!!m.is_speaking);
         }}catch(err){}
     };
     animWs.onclose=function(){setTimeout(connectAnimWs,3000);};
