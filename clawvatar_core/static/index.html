@@ -139,6 +139,18 @@ input[type=file]{display:none}
         <div class="call-viewport">
             <canvas id="c"></canvas>
             <div class="hud"><b>FPS</b> <span id="hFps">0</span> <b>Viseme</b> <span id="hVis">-</span></div>
+            <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:8px">
+                <span style="font-size:10px;color:#888">BG</span>
+                <button class="bg-swatch" data-bg="#0a0a12" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#0a0a12" title="Dark"></button>
+                <button class="bg-swatch" data-bg="#1a1520" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#1a1520" title="Purple"></button>
+                <button class="bg-swatch" data-bg="#152a3a" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#152a3a" title="Blue"></button>
+                <button class="bg-swatch" data-bg="#1a2a1a" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#1a2a1a" title="Green"></button>
+                <button class="bg-swatch" data-bg="#2a1a1a" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#2a1a1a" title="Warm"></button>
+                <button class="bg-swatch" data-bg="gradient" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:linear-gradient(135deg,#7c6ef0,#60a5fa)" title="Gradient"></button>
+                <button class="bg-swatch" data-bg="office" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:linear-gradient(180deg,#d4d0c8 50%,#8a8780 50%)" title="Office"></button>
+                <button onclick="document.getElementById('bgImage').click()" style="width:22px;height:22px;border-radius:4px;border:1px solid #333;cursor:pointer;background:#222;color:#aaa;font-size:11px" title="Upload image">📷</button>
+                <input type="file" id="bgImage" accept="image/*" style="display:none">
+            </div>
         </div>
         <div class="call-sidebar">
             <div class="call-info">
@@ -204,6 +216,44 @@ function anim(){
     R.render(scene,cam);fc++;if(performance.now()-ft>=1e3){document.getElementById('hFps').textContent=fc;fc=0;ft=performance.now();}
 }
 anim();
+
+// --- Background management ---
+function makeGradientTexture(c1,c2){
+    const cv=document.createElement('canvas');cv.width=512;cv.height=512;
+    const ctx=cv.getContext('2d');
+    const g=ctx.createLinearGradient(0,0,512,512);
+    g.addColorStop(0,c1);g.addColorStop(1,c2);
+    ctx.fillStyle=g;ctx.fillRect(0,0,512,512);
+    const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+function makeOfficeTexture(){
+    const cv=document.createElement('canvas');cv.width=1024;cv.height=1024;
+    const ctx=cv.getContext('2d');
+    // Wall
+    const g=ctx.createLinearGradient(0,0,0,600);g.addColorStop(0,'#e8e4dc');g.addColorStop(1,'#d4d0c8');
+    ctx.fillStyle=g;ctx.fillRect(0,0,1024,600);
+    // Floor
+    const g2=ctx.createLinearGradient(0,600,0,1024);g2.addColorStop(0,'#8a8780');g2.addColorStop(1,'#5a5850');
+    ctx.fillStyle=g2;ctx.fillRect(0,600,1024,1024);
+    // Window on wall
+    ctx.fillStyle='#a8c8e8';ctx.fillRect(200,150,350,300);
+    ctx.strokeStyle='#666';ctx.lineWidth=3;ctx.strokeRect(200,150,350,300);
+    ctx.beginPath();ctx.moveTo(375,150);ctx.lineTo(375,450);ctx.moveTo(200,300);ctx.lineTo(550,300);ctx.stroke();
+    // Plant
+    ctx.fillStyle='#2a4a2a';ctx.beginPath();ctx.arc(800,450,80,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#6a4a2a';ctx.fillRect(770,500,60,80);
+    const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+window.setBackground=function(bg){
+    if(bg==='gradient'){scene.background=makeGradientTexture('#7c6ef0','#60a5fa');}
+    else if(bg==='office'){scene.background=makeOfficeTexture();}
+    else if(bg&&bg.startsWith('#')){scene.background=new THREE.Color(bg);}
+    else if(bg&&bg.startsWith('data:')){
+        const loader=new THREE.TextureLoader();
+        loader.load(bg,function(tex){tex.colorSpace=THREE.SRGBColorSpace;scene.background=tex;});
+    }
+    localStorage.setItem('clawvatar_bg',bg);
+};
 
 window.loadAvatar=async function(path){
     if(vrm){scene.remove(vrm.scene);vrm=null;hb=null;}
@@ -445,6 +495,21 @@ function captureAgentAudio(track){
 loadSettings();
 loadAgents();
 loadAvatars();
+
+// --- Background controls ---
+document.querySelectorAll('.bg-swatch').forEach(function(btn){
+    btn.onclick=function(){window.setBackground(btn.dataset.bg);};
+});
+document.getElementById('bgImage').onchange=function(){
+    if(!this.files.length)return;
+    var r=new FileReader();
+    r.onload=function(e){window.setBackground(e.target.result);};
+    r.readAsDataURL(this.files[0]);
+    this.value='';
+};
+// Restore saved background
+var savedBg=localStorage.getItem('clawvatar_bg');
+if(savedBg){setTimeout(function(){window.setBackground(savedBg);},500);}
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 </script>
