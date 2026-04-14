@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from clawvatar_core import db
 from clawvatar_core.adapters.openclaw import OpenClawAdapter
 from clawvatar_core.director import IdleDirector
+from clawvatar_core.stream import AvatarStreamer
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # Runtime state (not persisted)
 _engine = None
 _openclaw: Optional[OpenClawAdapter] = None
+_streamer: Optional[AvatarStreamer] = None
 
 
 def _get_engine():
@@ -408,6 +410,89 @@ async def director_action(body: dict):
     return action
 
 
+# ==================== Streaming ====================
+
+@app.post("/api/stream/start")
+async def stream_start(body: dict):
+    """Start headless avatar stream.
+
+    Body: {agent_id, room?, width?, height?, fps?,
+           outputs: {hls?, rtmp?, file?, v4l2?}}
+    """
+    global _streamer
+    if _streamer and _streamer.is_streaming:
+        return {"error": "Already streaming — stop first", "status": _streamer.get_status()}
+
+    agent_id = body.get("agent_id", "")
+    room = body.get("room", "")
+    width = int(body.get("width", 1280))
+    height = int(body.get("height", 720))
+    fps = int(body.get("fps", 30))
+    outputs = body.get("outputs", {"hls": True})
+
+    # Build server URL from request context
+    ssl_cert = os.environ.get("SSL_CERT", "")
+    protocol = "https" if ssl_cert else "https"
+    server_url = f"{protocol}://localhost:8766"
+
+    _streamer = AvatarStreamer(
+        server_url=server_url,
+        width=width,
+        height=height,
+        fps=fps,
+    )
+
+    try:
+        await _streamer.start(agent_id=agent_id, room=room, outputs=outputs)
+        return {"ok": True, "status": _streamer.get_status()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/stream/stop")
+async def stream_stop():
+    """Stop active stream."""
+    global _streamer
+    if not _streamer:
+        return {"error": "No active stream"}
+    await _streamer.stop()
+    return {"ok": True, "status": _streamer.get_status()}
+
+
+@app.get("/api/stream/status")
+async def stream_status():
+    """Get current stream status."""
+    if not _streamer:
+        return {"status": "stopped"}
+    return _streamer.get_status()
+
+
+@app.get("/api/stream/hls/{filename:path}")
+async def stream_hls(filename: str):
+    """Serve HLS manifest and segments."""
+    if not _streamer or not _streamer.hls_dir:
+        return JSONResponse({"error": "No HLS stream active"}, status_code=404)
+
+    filepath = Path(_streamer.hls_dir) / filename
+    if not filepath.exists():
+        return JSONResponse({"error": "Segment not found"}, status_code=404)
+
+    if filename.endswith(".m3u8"):
+        return FileResponse(filepath, media_type="application/vnd.apple.mpegurl",
+                           headers={"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"})
+    elif filename.endswith(".ts"):
+        return FileResponse(filepath, media_type="video/mp2t",
+                           headers={"Access-Control-Allow-Origin": "*"})
+    return FileResponse(filepath)
+
+
+@app.get("/stream")
+async def stream_view():
+    """Clean stream view page — fullscreen avatar, no UI chrome.
+    Used for OBS browser source, tab sharing, or headless capture."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/api/health")
 async def health():
     return {
@@ -415,6 +500,7 @@ async def health():
         "configured": db.is_configured(),
         "openclaw_connected": _openclaw is not None and _openclaw.is_connected,
         "engine_connected": _engine is not None and _engine.is_connected,
+        "streaming": _streamer is not None and _streamer.is_streaming,
     }
 
 

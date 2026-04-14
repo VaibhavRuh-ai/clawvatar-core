@@ -76,6 +76,31 @@ input[type=file]{display:none}
 /* Hidden pages */
 .page{display:none}.page.active{display:block}
 .call-page{display:none}.call-page.active{display:flex}
+
+/* Stream mode — fullscreen canvas, no UI */
+body.stream-mode .topbar,body.stream-mode .call-sidebar,body.stream-mode .hud,
+body.stream-mode .call-viewport>div:not(canvas){display:none!important}
+body.stream-mode .call-page{display:flex!important}
+body.stream-mode .call-viewport{width:100vw;height:100vh}
+body.stream-mode .content{display:none!important}
+
+/* Streaming tab */
+.stream-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px}
+@media(max-width:768px){.stream-grid{grid-template-columns:1fr}}
+.stream-preview{background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9;position:relative;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.stream-preview video{width:100%;height:100%;object-fit:contain}
+.stream-indicator{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700}
+.stream-indicator .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.stream-indicator .dot.live{background:var(--red);animation:pulse 1.5s infinite}
+.stream-indicator .dot.off{background:#444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.url-box{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;font-family:monospace;color:var(--blue);word-break:break-all;cursor:pointer;user-select:all}
+.platform-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;line-height:1.7}
+.platform-card h4{font-size:12px;margin-bottom:6px;color:var(--text)}
+.platform-card ol{padding-left:18px;color:var(--muted)}
+.platform-card li{margin-bottom:4px}
+.toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px}
+.toggle-row input[type=checkbox]{accent-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -84,6 +109,7 @@ input[type=file]{display:none}
         <h1><b>Claw</b>vatar</h1>
         <nav>
             <a class="active" onclick="showPage('dashboard')">Dashboard</a>
+            <a onclick="showPage('streaming')">Streaming</a>
             <a onclick="showPage('settings')">Settings</a>
         </nav>
         <div class="spacer"></div>
@@ -132,6 +158,132 @@ input[type=file]{display:none}
         <button class="btn btn-accent" onclick="saveSettings()">Save Settings</button>
         <button class="btn btn-green" onclick="testOpenClaw()" style="margin-left:8px">Test OpenClaw Connection</button>
         <div id="settingsMsg" style="margin-top:8px;font-size:11px"></div>
+    </div>
+
+    <!-- Streaming -->
+    <div class="content page" id="page-streaming">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <h2 style="font-size:16px">Video Streaming</h2>
+            <span class="stream-indicator" id="streamIndicator">
+                <span class="dot off" id="streamDot"></span>
+                <span id="streamLabel">Offline</span>
+            </span>
+        </div>
+
+        <div class="stream-grid">
+            <!-- Left: Controls -->
+            <div>
+                <div class="card">
+                    <h2>Stream Setup</h2>
+                    <div class="field">
+                        <label>Agent</label>
+                        <select id="stream_agent" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px">
+                            <option value="">Select agent...</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <div class="field" style="flex:1"><label>Resolution</label>
+                            <select id="stream_res" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px">
+                                <option value="1280x720">720p (1280x720)</option>
+                                <option value="1920x1080">1080p (1920x1080)</option>
+                                <option value="854x480">480p (854x480)</option>
+                            </select>
+                        </div>
+                        <div class="field" style="flex:1"><label>FPS</label>
+                            <select id="stream_fps" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px">
+                                <option value="30">30 fps</option>
+                                <option value="24">24 fps</option>
+                                <option value="60">60 fps</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h2 style="margin-top:12px">Outputs</h2>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="out_hls" checked>
+                        <label for="out_hls">HLS Stream (browser/embed)</label>
+                    </div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="out_rtmp">
+                        <label for="out_rtmp">RTMP (YouTube/Twitch)</label>
+                    </div>
+                    <div class="field" id="rtmpField" style="display:none">
+                        <label>RTMP URL</label>
+                        <input id="stream_rtmp" placeholder="rtmp://a.rtmp.youtube.com/live2/your-stream-key">
+                    </div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="out_record">
+                        <label for="out_record">Record to file (MP4)</label>
+                    </div>
+
+                    <div style="margin-top:14px;display:flex;gap:8px">
+                        <button class="btn btn-green" id="btnStreamStart" onclick="startStream()">Start Stream</button>
+                        <button class="btn btn-red" id="btnStreamStop" onclick="stopStream()" style="display:none">Stop Stream</button>
+                    </div>
+                    <div id="streamMsg" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
+                </div>
+
+                <!-- Stream URLs -->
+                <div class="card" id="streamUrls" style="display:none">
+                    <h2>Stream URLs</h2>
+                    <div class="field"><label>HLS Stream</label>
+                        <div class="url-box" id="hlsUrl" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">—</div>
+                    </div>
+                    <div class="field"><label>Stream View (for tab sharing/OBS)</label>
+                        <div class="url-box" id="streamViewUrl" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">—</div>
+                    </div>
+                    <div style="font-size:10px;color:var(--muted);margin-top:4px">Click any URL to copy</div>
+                </div>
+            </div>
+
+            <!-- Right: Preview + Instructions -->
+            <div>
+                <div class="card">
+                    <h2>Preview</h2>
+                    <div class="stream-preview" id="streamPreview">
+                        <span>No active stream</span>
+                    </div>
+                    <div style="text-align:center;margin-top:6px;font-size:10px;color:var(--muted)" id="streamUptime"></div>
+                </div>
+
+                <div class="card">
+                    <h2>Use with Platforms</h2>
+                    <div class="platform-card" style="margin-bottom:8px">
+                        <h4>Zoom / Google Meet / Teams</h4>
+                        <ol>
+                            <li>Open the <b>Stream View URL</b> in a new browser tab</li>
+                            <li>In your meeting, click <b>Share Screen</b></li>
+                            <li>Select the <b>browser tab</b> with the avatar</li>
+                            <li>Check <b>"Share tab audio"</b> for voice</li>
+                        </ol>
+                    </div>
+                    <div class="platform-card" style="margin-bottom:8px">
+                        <h4>OBS Studio</h4>
+                        <ol>
+                            <li>Add a <b>Browser Source</b></li>
+                            <li>Set URL to the <b>Stream View URL</b></li>
+                            <li>Set size to match resolution</li>
+                            <li>Use OBS Virtual Camera for Zoom/Meet</li>
+                        </ol>
+                    </div>
+                    <div class="platform-card" style="margin-bottom:8px">
+                        <h4>YouTube Live / Twitch</h4>
+                        <ol>
+                            <li>Enable <b>RTMP</b> output above</li>
+                            <li>Paste your stream key URL</li>
+                            <li>Start stream — goes directly to platform</li>
+                        </ol>
+                    </div>
+                    <div class="platform-card">
+                        <h4>Embed on Website</h4>
+                        <ol>
+                            <li>Use the <b>HLS URL</b> with any HLS player</li>
+                            <li><code style="color:var(--blue)">&lt;video src="HLS_URL"&gt;</code> or hls.js</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Call Screen (hidden, shown when call starts) -->
@@ -840,6 +992,7 @@ function showPage(name){
     document.getElementById('page-'+name).classList.add('active');
     document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('active',a.textContent.toLowerCase()===name)});
     if(name==='call')window.resizeRenderer();
+    if(name==='streaming')populateStreamAgents();
 }
 
 // --- API helpers ---
@@ -1145,6 +1298,157 @@ async function tickDirector(){
 setInterval(tickDirector, 4000);
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
+
+// === Stream mode: ?mode=stream&agent_id=X ===
+(function(){
+    var params=new URLSearchParams(location.search);
+    if(params.get('mode')==='stream'){
+        document.body.classList.add('stream-mode');
+        var agentId=params.get('agent_id')||'';
+        if(agentId){
+            setTimeout(function(){startCall(agentId);},500);
+        }
+    }
+})();
+
+// === Streaming UI logic ===
+document.getElementById('out_rtmp').onchange=function(){
+    document.getElementById('rtmpField').style.display=this.checked?'block':'none';
+};
+
+async function populateStreamAgents(){
+    try{
+        var d=await api('GET','/api/agents');
+        var sel=document.getElementById('stream_agent');
+        sel.innerHTML='<option value="">Select agent...</option>';
+        (d.agents||[]).forEach(function(a){
+            sel.innerHTML+='<option value="'+a.id+'">'+a.id+(a.avatar_name?' ('+a.avatar_name+')':'')+'</option>';
+        });
+    }catch(e){}
+}
+
+async function startStream(){
+    var agentId=document.getElementById('stream_agent').value;
+    if(!agentId){document.getElementById('streamMsg').textContent='Select an agent first';document.getElementById('streamMsg').style.color='var(--red)';return;}
+
+    var res=document.getElementById('stream_res').value.split('x');
+    var fps=parseInt(document.getElementById('stream_fps').value);
+    var outputs={};
+    if(document.getElementById('out_hls').checked)outputs.hls=true;
+    if(document.getElementById('out_rtmp').checked){
+        var url=document.getElementById('stream_rtmp').value;
+        if(url)outputs.rtmp=url;
+    }
+    if(document.getElementById('out_record').checked)outputs.file='/tmp/clawvatar_recording_'+Date.now()+'.mp4';
+
+    document.getElementById('streamMsg').textContent='Starting stream...';
+    document.getElementById('streamMsg').style.color='var(--muted)';
+    document.getElementById('btnStreamStart').disabled=true;
+
+    try{
+        var d=await api('POST','/api/stream/start',{
+            agent_id:agentId,
+            width:parseInt(res[0]),height:parseInt(res[1]),
+            fps:fps,outputs:outputs
+        });
+        if(d.error){
+            document.getElementById('streamMsg').textContent='Error: '+d.error;
+            document.getElementById('streamMsg').style.color='var(--red)';
+            document.getElementById('btnStreamStart').disabled=false;
+            return;
+        }
+        document.getElementById('streamMsg').textContent='Stream started!';
+        document.getElementById('streamMsg').style.color='var(--green)';
+        updateStreamUI(d.status||d);
+    }catch(e){
+        document.getElementById('streamMsg').textContent='Error: '+e.message;
+        document.getElementById('streamMsg').style.color='var(--red)';
+        document.getElementById('btnStreamStart').disabled=false;
+    }
+}
+
+async function stopStream(){
+    document.getElementById('streamMsg').textContent='Stopping...';
+    try{
+        await api('POST','/api/stream/stop');
+        document.getElementById('streamMsg').textContent='Stream stopped';
+        document.getElementById('streamMsg').style.color='var(--muted)';
+        updateStreamUI({status:'stopped'});
+    }catch(e){
+        document.getElementById('streamMsg').textContent='Error: '+e.message;
+    }
+}
+
+function updateStreamUI(st){
+    var isLive=st.status==='streaming';
+    document.getElementById('streamDot').className='dot '+(isLive?'live':'off');
+    document.getElementById('streamLabel').textContent=isLive?'LIVE':'Offline';
+    document.getElementById('btnStreamStart').style.display=isLive?'none':'inline-block';
+    document.getElementById('btnStreamStop').style.display=isLive?'inline-block':'none';
+    document.getElementById('btnStreamStart').disabled=false;
+
+    var urlCard=document.getElementById('streamUrls');
+    if(isLive){
+        urlCard.style.display='block';
+        var base=location.protocol+'//'+location.host;
+        document.getElementById('hlsUrl').textContent=base+'/api/stream/hls/stream.m3u8';
+        var agentId=document.getElementById('stream_agent').value;
+        document.getElementById('streamViewUrl').textContent=base+'/stream?mode=stream&agent_id='+agentId;
+        // Setup HLS preview
+        setupPreview(base+'/api/stream/hls/stream.m3u8');
+    } else {
+        urlCard.style.display='none';
+        var preview=document.getElementById('streamPreview');
+        preview.innerHTML='<span>No active stream</span>';
+        document.getElementById('streamUptime').textContent='';
+    }
+}
+
+function setupPreview(hlsUrl){
+    var preview=document.getElementById('streamPreview');
+    preview.innerHTML='<video id="previewVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain"></video>';
+    var video=document.getElementById('previewVideo');
+
+    // Try native HLS first (Safari), then hls.js
+    if(video.canPlayType('application/vnd.apple.mpegurl')){
+        video.src=hlsUrl;
+    } else {
+        // Load hls.js dynamically
+        var s=document.createElement('script');
+        s.src='https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js';
+        s.onload=function(){
+            if(typeof Hls!=='undefined'&&Hls.isSupported()){
+                var hls=new Hls({enableWorker:true,lowLatencyMode:true});
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play();});
+            }
+        };
+        document.head.appendChild(s);
+    }
+}
+
+// Poll stream status periodically
+setInterval(async function(){
+    try{
+        var st=await api('GET','/api/stream/status');
+        if(st.status==='streaming'){
+            updateStreamUI(st);
+            document.getElementById('streamUptime').textContent='Uptime: '+formatDuration(st.uptime||0);
+        }
+    }catch(e){}
+},5000);
+
+function formatDuration(s){
+    var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+    if(h>0)return h+'h '+m+'m';
+    if(m>0)return m+'m '+sec+'s';
+    return sec+'s';
+}
+
+// Check initial stream status + populate agents for stream tab
+populateStreamAgents();
+api('GET','/api/stream/status').then(function(st){if(st.status==='streaming')updateStreamUI(st);});
 </script>
 </body>
 </html>
