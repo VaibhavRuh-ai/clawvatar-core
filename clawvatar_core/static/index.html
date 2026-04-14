@@ -78,11 +78,17 @@ input[type=file]{display:none}
 .call-page{display:none}.call-page.active{display:flex}
 
 /* Stream mode — fullscreen canvas, no UI */
-body.stream-mode .topbar,body.stream-mode .call-sidebar,body.stream-mode .hud,
-body.stream-mode .call-viewport>div:not(canvas){display:none!important}
-body.stream-mode .call-page{display:flex!important}
-body.stream-mode .call-viewport{width:100vw;height:100vh}
+body.stream-mode{cursor:none!important;overflow:hidden}
+body.stream-mode *{cursor:none!important}
+body.stream-mode .app{height:100vh}
+body.stream-mode .topbar{display:none!important}
 body.stream-mode .content{display:none!important}
+body.stream-mode .call-page{display:flex!important;height:100vh!important}
+body.stream-mode .call-sidebar{display:none!important;width:0!important}
+body.stream-mode .call-viewport{flex:1!important;width:100vw!important;height:100vh!important}
+body.stream-mode .call-viewport .hud{display:none!important}
+body.stream-mode .call-viewport>div:not(#c){display:none!important}
+body.stream-mode .call-controls{display:none!important}
 
 /* Streaming tab */
 .stream-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px}
@@ -1402,7 +1408,15 @@ api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({
         var room=params.get('room')||'';
         _audioInputMode=audioMode;
         if(agentId){
-            setTimeout(function(){startCall(agentId,{audioMode:audioMode,room:room});},500);
+            setTimeout(function(){
+                startCall(agentId,{audioMode:audioMode,room:room});
+                // Resize after call page is shown (stream mode fullscreen)
+                setTimeout(function(){window.resizeRenderer();},500);
+            },500);
+        } else {
+            // No agent — just show the 3D room fullscreen
+            showPage('call');
+            setTimeout(function(){window.resizeRenderer();},300);
         }
     }
 })();
@@ -1509,26 +1523,36 @@ function updateStreamUI(st){
     }
 }
 
+var _hlsInstance=null, _hlsScriptLoaded=false;
 function setupPreview(hlsUrl){
     var preview=document.getElementById('streamPreview');
-    preview.innerHTML='<video id="previewVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain"></video>';
+    // Don't recreate if already playing
+    if(document.getElementById('previewVideo'))return;
+    preview.innerHTML='<video id="previewVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;background:#000"></video>';
     var video=document.getElementById('previewVideo');
+
+    function initHls(){
+        if(typeof Hls!=='undefined'&&Hls.isSupported()){
+            if(_hlsInstance){_hlsInstance.destroy();}
+            _hlsInstance=new Hls({enableWorker:true,lowLatencyMode:true,liveSyncDurationCount:3});
+            _hlsInstance.loadSource(hlsUrl);
+            _hlsInstance.attachMedia(video);
+            _hlsInstance.on(Hls.Events.MANIFEST_PARSED,function(){video.play().catch(function(){});});
+            _hlsInstance.on(Hls.Events.ERROR,function(e,data){
+                if(data.fatal){_hlsInstance.destroy();_hlsInstance=null;}
+            });
+        }
+    }
 
     // Try native HLS first (Safari), then hls.js
     if(video.canPlayType('application/vnd.apple.mpegurl')){
         video.src=hlsUrl;
+    } else if(_hlsScriptLoaded){
+        initHls();
     } else {
-        // Load hls.js dynamically
         var s=document.createElement('script');
         s.src='https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js';
-        s.onload=function(){
-            if(typeof Hls!=='undefined'&&Hls.isSupported()){
-                var hls=new Hls({enableWorker:true,lowLatencyMode:true});
-                hls.loadSource(hlsUrl);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play();});
-            }
-        };
+        s.onload=function(){_hlsScriptLoaded=true;initHls();};
         document.head.appendChild(s);
     }
 }

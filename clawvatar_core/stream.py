@@ -248,8 +248,8 @@ class AvatarStreamer:
         """Launch Chromium on virtual display with stream view."""
         env = {**os.environ, "DISPLAY": f":{self._display_num}"}
 
-        # Build stream URL
-        params = "mode=stream"
+        # Build stream URL — headless uses audio=none (no mic needed)
+        params = "mode=stream&audio=none"
         if agent_id:
             params += f"&agent_id={agent_id}"
         if room:
@@ -261,9 +261,11 @@ class AvatarStreamer:
             [
                 "chromium",
                 "--no-sandbox",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--use-gl=swiftshader",
+                "--use-gl=angle",
+                "--use-angle=swiftshader-webgl",
+                "--enable-webgl",
+                "--disable-dev-shm-usage",
+                "--force-device-scale-factor=1",
                 f"--window-size={self.width},{self.height}",
                 "--window-position=0,0",
                 "--kiosk",
@@ -273,14 +275,16 @@ class AvatarStreamer:
                 "--disable-extensions",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--use-fake-device-for-media-stream",
+                "--use-fake-ui-for-media-stream",
                 url,
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=env,
         )
-        # Wait for page to load and 3D scene to render
-        await asyncio.sleep(5)
+        # Wait for page to load, WebGL to init, and 3D scene to render
+        await asyncio.sleep(8)
         if self._chromium.poll() is not None:
             raise RuntimeError("Chromium failed to start")
         logger.info(f"Chromium started: {url}")
