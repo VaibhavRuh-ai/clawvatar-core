@@ -198,6 +198,15 @@ body.stream-mode .content{display:none!important}
                         </div>
                     </div>
 
+                    <div class="field"><label>Audio Input</label>
+                        <select id="stream_audio" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px">
+                            <option value="mic">Microphone (direct 1:1 call)</option>
+                            <option value="system">System audio (bridge Zoom/Meet audio to agent)</option>
+                            <option value="none">None (display only, no audio input)</option>
+                        </select>
+                        <div style="font-size:10px;color:var(--muted);margin-top:4px" id="audioHint">Agent hears your mic directly through LiveKit</div>
+                    </div>
+
                     <h2 style="margin-top:12px">Outputs</h2>
                     <div class="toggle-row">
                         <input type="checkbox" id="out_hls" checked>
@@ -249,37 +258,66 @@ body.stream-mode .content{display:none!important}
                 <div class="card">
                     <h2>Use with Platforms</h2>
                     <div class="platform-card" style="margin-bottom:8px">
-                        <h4>Zoom / Google Meet / Teams</h4>
+                        <h4>Zoom / Google Meet / Teams (Tab Sharing)</h4>
                         <ol>
-                            <li>Open the <b>Stream View URL</b> in a new browser tab</li>
-                            <li>In your meeting, click <b>Share Screen</b></li>
-                            <li>Select the <b>browser tab</b> with the avatar</li>
-                            <li>Check <b>"Share tab audio"</b> for voice</li>
+                            <li>Set audio input to <b>"Microphone"</b> above</li>
+                            <li>Open the <b>Stream View URL</b> in a new tab</li>
+                            <li>Grant mic access — agent hears you through LiveKit</li>
+                            <li>In your meeting: <b>Share Screen → Chrome Tab</b></li>
+                            <li>Check <b>"Share tab audio"</b> so others hear the agent</li>
+                        </ol>
+                    </div>
+                    <div class="platform-card" style="margin-bottom:8px">
+                        <h4>Zoom / Meet (Audio Bridge)</h4>
+                        <ol>
+                            <li>Set audio input to <b>"System audio"</b> above</li>
+                            <li>Open the <b>Stream View URL</b> in a new tab</li>
+                            <li>When prompted, select the <b>meeting tab</b> to capture its audio</li>
+                            <li>Meeting participants' voices → agent hears them</li>
+                            <li>Share the avatar tab for video output</li>
+                        </ol>
+                    </div>
+                    <div class="platform-card" style="margin-bottom:8px">
+                        <h4>Direct LiveKit Room (Simplest)</h4>
+                        <ol>
+                            <li>Share the <b>Stream View URL</b> directly with participants</li>
+                            <li>Everyone opens it — joins the same LiveKit room</li>
+                            <li>No Zoom/Meet needed — full bidirectional voice</li>
                         </ol>
                     </div>
                     <div class="platform-card" style="margin-bottom:8px">
                         <h4>OBS Studio</h4>
                         <ol>
-                            <li>Add a <b>Browser Source</b></li>
-                            <li>Set URL to the <b>Stream View URL</b></li>
-                            <li>Set size to match resolution</li>
-                            <li>Use OBS Virtual Camera for Zoom/Meet</li>
+                            <li>Add a <b>Browser Source</b> → paste Stream View URL</li>
+                            <li>Set size to match resolution, enable audio</li>
+                            <li>Use OBS Virtual Camera → select in Zoom/Meet</li>
                         </ol>
                     </div>
                     <div class="platform-card" style="margin-bottom:8px">
                         <h4>YouTube Live / Twitch</h4>
                         <ol>
-                            <li>Enable <b>RTMP</b> output above</li>
-                            <li>Paste your stream key URL</li>
-                            <li>Start stream — goes directly to platform</li>
+                            <li>Enable <b>RTMP</b> output, paste your stream key</li>
+                            <li>Start stream — video+audio goes directly to platform</li>
                         </ol>
                     </div>
                     <div class="platform-card">
                         <h4>Embed on Website</h4>
                         <ol>
-                            <li>Use the <b>HLS URL</b> with any HLS player</li>
-                            <li><code style="color:var(--blue)">&lt;video src="HLS_URL"&gt;</code> or hls.js</li>
+                            <li>Use <b>HLS URL</b> with hls.js or native Safari</li>
+                            <li><code style="color:var(--blue)">&lt;video src="HLS_URL"&gt;</code></li>
                         </ol>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Audio Flow</h2>
+                    <div style="font-size:11px;line-height:1.8;color:var(--muted)">
+                        <div><b style="color:var(--text)">Audio OUT</b> (agent → others):</div>
+                        <div style="margin-left:12px">Agent speaks → LiveKit → avatar tab plays audio → share tab audio in meeting</div>
+                        <div style="margin-top:6px"><b style="color:var(--text)">Audio IN</b> (others → agent):</div>
+                        <div style="margin-left:12px"><b>Mic mode:</b> Your microphone → LiveKit → agent hears you</div>
+                        <div style="margin-left:12px"><b>System mode:</b> Meeting participants' audio → system capture → LiveKit → agent hears everyone</div>
+                        <div style="margin-left:12px"><b>Direct mode:</b> Everyone in LiveKit room → agent hears all participants</div>
                     </div>
                 </div>
             </div>
@@ -1069,7 +1107,10 @@ async function loadAgents(){
             +'<select onchange="assignAvatar(\''+a.id+'\',this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:10px">'
             +opts+'</select>'
             +'</div>'
-            +'<button class="btn btn-accent btn-sm" style="margin-top:6px;width:100%" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>';
+            +'<div style="display:flex;gap:4px;margin-top:6px">'
+            +'<button class="btn btn-accent btn-sm" style="flex:1" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>'
+            +'<button class="btn btn-sm" style="background:#2a2a44;font-size:9px" onclick="event.stopPropagation();startCall(\''+a.id+'\',{audioMode:\'system\'})" title="Bridge system audio (Zoom/Meet)">Bridge</button>'
+            +'</div>';
         grid.appendChild(div);
     });
 }
@@ -1104,8 +1145,39 @@ document.getElementById('avatarUpload').onchange=async function(){
     this.value='';
 };
 
+// --- Audio input modes ---
+// 'mic'     — default browser mic (normal 1:1 call)
+// 'system'  — capture system/tab audio (for Zoom/Meet bridging)
+// 'none'    — no audio input (display-only / headless render)
+var _audioInputMode='mic';
+var _systemAudioStream=null;
+
+async function getAudioInput(mode){
+    if(mode==='none') return null;
+    if(mode==='system'){
+        // Capture system audio — user selects a tab/screen that has meeting audio
+        try{
+            var stream=await navigator.mediaDevices.getDisplayMedia({
+                video:false,
+                audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+            });
+            _systemAudioStream=stream;
+            return stream;
+        }catch(e){
+            console.warn('System audio capture denied, falling back to mic:',e);
+            return await getAudioInput('mic');
+        }
+    }
+    // Default: mic
+    return null; // LiveKit handles mic internally via setMicrophoneEnabled
+}
+
 // --- Call ---
-async function startCall(agentId){
+async function startCall(agentId, options){
+    options=options||{};
+    var audioMode=options.audioMode||_audioInputMode;
+    var roomName=options.room||'';
+
     currentAgent=agentId;
     document.getElementById('callAgentName').textContent=agentId;
     document.getElementById('callMeta').textContent='Connecting...';
@@ -1116,7 +1188,6 @@ async function startCall(agentId){
     // Load assigned avatar
     var avInfo=await api('GET','/api/agents/'+agentId+'/avatar');
     if(avInfo&&avInfo.file_path){
-        // Upload as blob URL for Three.js
         try{
             var resp=await fetch('/api/avatars/'+avInfo.avatar_id+'/file');
             if(resp.ok){
@@ -1130,8 +1201,13 @@ async function startCall(agentId){
     // Connect animation WebSocket
     connectAnimWs();
 
+    // Get audio input based on mode
+    var externalAudio=await getAudioInput(audioMode);
+
     // Get LiveKit token and join room
-    var tok=await api('GET','/api/token?agent_id='+agentId);
+    var tokenUrl='/api/token?agent_id='+agentId;
+    if(roomName) tokenUrl+='&room='+encodeURIComponent(roomName);
+    var tok=await api('GET',tokenUrl);
     if(tok.error){addTranscript('Error: '+tok.error,'sys');return;}
 
     try{
@@ -1151,7 +1227,6 @@ async function startCall(agentId){
                     if(!seg.final)return;
                     var text=seg.text||'';
                     if(!text)return;
-                    // Determine who said it: local = user, remote = agent
                     if(participant && participant.identity && participant.identity.startsWith('user')){
                         if(typeof window.markUserSpoke==='function')window.markUserSpoke(text);
                         addTranscript('You: '+text,'user');
@@ -1167,16 +1242,34 @@ async function startCall(agentId){
         });
 
         await lkRoom.connect(tok.url,tok.token);
-        await lkRoom.localParticipant.setMicrophoneEnabled(true);
-        micOn=true;
-        addTranscript('Connected to room: '+tok.room,'sys');
-        document.getElementById('callMeta').textContent='Waiting for agent...';
+
+        if(audioMode==='system' && externalAudio){
+            // Publish system audio as a track → agent hears meeting participants
+            var audioTrack=externalAudio.getAudioTracks()[0];
+            if(audioTrack){
+                var lkTrack=new LivekitClient.LocalAudioTrack(audioTrack);
+                await lkRoom.localParticipant.publishTrack(lkTrack,{
+                    name:'system_audio',source:LivekitClient.Track.Source.Microphone
+                });
+                addTranscript('System audio bridged to agent','sys');
+            }
+            micOn=true;
+        } else if(audioMode!=='none'){
+            await lkRoom.localParticipant.setMicrophoneEnabled(true);
+            micOn=true;
+        } else {
+            micOn=false;
+        }
+
+        addTranscript('Connected to room: '+tok.room+' (audio: '+audioMode+')','sys');
+        document.getElementById('callMeta').textContent='In call ('+audioMode+')';
     }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
 function endCall(){
     if(lkRoom){lkRoom.disconnect();lkRoom=null;}
     if(animWs){animWs.close();animWs=null;}
+    if(_systemAudioStream){_systemAudioStream.getTracks().forEach(function(t){t.stop()});_systemAudioStream=null;}
     showPage('dashboard');
 }
 
@@ -1299,14 +1392,17 @@ setInterval(tickDirector, 4000);
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 
-// === Stream mode: ?mode=stream&agent_id=X ===
+// === Stream mode: ?mode=stream&agent_id=X&audio=mic|system|none ===
 (function(){
     var params=new URLSearchParams(location.search);
     if(params.get('mode')==='stream'){
         document.body.classList.add('stream-mode');
         var agentId=params.get('agent_id')||'';
+        var audioMode=params.get('audio')||'mic';
+        var room=params.get('room')||'';
+        _audioInputMode=audioMode;
         if(agentId){
-            setTimeout(function(){startCall(agentId);},500);
+            setTimeout(function(){startCall(agentId,{audioMode:audioMode,room:room});},500);
         }
     }
 })();
@@ -1314,6 +1410,14 @@ api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({
 // === Streaming UI logic ===
 document.getElementById('out_rtmp').onchange=function(){
     document.getElementById('rtmpField').style.display=this.checked?'block':'none';
+};
+document.getElementById('stream_audio').onchange=function(){
+    var hints={
+        mic:'Agent hears your mic directly through LiveKit',
+        system:'Captures system audio (Zoom/Meet voices) → feeds to agent. You will be prompted to select audio source.',
+        none:'No audio input — avatar speaks but cannot hear. Use for display-only streams.'
+    };
+    document.getElementById('audioHint').textContent=hints[this.value]||'';
 };
 
 async function populateStreamAgents(){
@@ -1393,7 +1497,8 @@ function updateStreamUI(st){
         var base=location.protocol+'//'+location.host;
         document.getElementById('hlsUrl').textContent=base+'/api/stream/hls/stream.m3u8';
         var agentId=document.getElementById('stream_agent').value;
-        document.getElementById('streamViewUrl').textContent=base+'/stream?mode=stream&agent_id='+agentId;
+        var audioMode=document.getElementById('stream_audio').value||'mic';
+        document.getElementById('streamViewUrl').textContent=base+'/stream?mode=stream&agent_id='+agentId+'&audio='+audioMode;
         // Setup HLS preview
         setupPreview(base+'/api/stream/hls/stream.m3u8');
     } else {
