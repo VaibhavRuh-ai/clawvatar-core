@@ -78,8 +78,7 @@ input[type=file]{display:none}
 .call-page{display:none}.call-page.active{display:flex}
 
 /* Stream mode — fullscreen canvas, no UI */
-body.stream-mode{cursor:none!important;overflow:hidden}
-body.stream-mode *{cursor:none!important}
+body.stream-mode{overflow:hidden}
 body.stream-mode .app{height:100vh}
 body.stream-mode .topbar{display:none!important}
 body.stream-mode .content{display:none!important}
@@ -87,8 +86,20 @@ body.stream-mode .call-page{display:flex!important;height:100vh!important}
 body.stream-mode .call-sidebar{display:none!important;width:0!important}
 body.stream-mode .call-viewport{flex:1!important;width:100vw!important;height:100vh!important}
 body.stream-mode .call-viewport .hud{display:none!important}
-body.stream-mode .call-viewport>div:not(#c){display:none!important}
-body.stream-mode .call-controls{display:none!important}
+body.stream-mode .call-viewport>div:not(#c):not(.stream-overlay){display:none!important}
+/* Headless mode (no user) hides everything including overlay */
+body.stream-headless{cursor:none!important}
+body.stream-headless *{cursor:none!important}
+body.stream-headless .stream-overlay{display:none!important}
+/* Stream overlay — minimal floating controls */
+.stream-overlay{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(0,0,0,.65);padding:8px 16px;border-radius:24px;z-index:999;backdrop-filter:blur(8px)}
+.stream-overlay .smic{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:#333;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.stream-overlay .smic:hover{background:#444}
+.stream-overlay .smic.muted{background:var(--red)}
+.stream-overlay .smic svg{width:18px;height:18px;fill:#fff}
+.stream-overlay .sstatus{font-size:11px;color:#888;min-width:100px}
+.stream-overlay .send{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:var(--red);display:flex;align-items:center;justify-content:center}
+.stream-overlay .send svg{width:18px;height:18px;fill:#fff}
 
 /* Streaming tab */
 .stream-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px}
@@ -350,6 +361,16 @@ body.stream-mode .call-controls{display:none!important}
                 <span style="width:1px;height:18px;background:#333;margin:0 4px"></span>
                 <button id="cineBtn" onclick="toggleCinematic()" style="padding:2px 8px;border-radius:4px;border:1px solid #555;cursor:pointer;background:#7c6ef0;color:#fff;font-size:10px" title="Toggle cinematic camera">🎬 Auto</button>
             </div>
+        </div>
+        <!-- Stream overlay (visible only in stream mode, not headless) -->
+        <div class="stream-overlay" id="streamOverlay" style="display:none">
+            <button class="smic" id="sMic" onclick="toggleMic()">
+                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </button>
+            <span class="sstatus" id="sStatus">Connecting...</span>
+            <button class="send" onclick="endCall();window.close();" title="End">
+                <svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.67-1.85.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+            </button>
         </div>
         <div class="call-sidebar">
             <div class="call-info">
@@ -660,7 +681,12 @@ function anim(){
                 const dx=_lookCurrent.x-headWorldPos.x;
                 const dz=_lookCurrent.z-headWorldPos.z;
                 const dy=_lookCurrent.y-headWorldPos.y;
-                const lookYaw=Math.atan2(dx, dz)-vrm.scene.rotation.y;
+                // Body forward in world space (VRM default faces -Z, rotation.y rotates it)
+                const bodyFwd=Math.atan2(-Math.sin(vrm.scene.rotation.y),-Math.cos(vrm.scene.rotation.y));
+                let lookYaw=Math.atan2(dx, dz)-bodyFwd;
+                // Normalize to [-π, π]
+                while(lookYaw>Math.PI) lookYaw-=Math.PI*2;
+                while(lookYaw<-Math.PI) lookYaw+=Math.PI*2;
                 const lookPitch=Math.atan2(dy, Math.sqrt(dx*dx+dz*dz));
                 dYaw=Math.max(-0.6, Math.min(0.6, lookYaw))*0.7;
                 dPitch=Math.max(-0.3, Math.min(0.25, -lookPitch*0.6));
@@ -1113,10 +1139,7 @@ async function loadAgents(){
             +'<select onchange="assignAvatar(\''+a.id+'\',this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:10px">'
             +opts+'</select>'
             +'</div>'
-            +'<div style="display:flex;gap:4px;margin-top:6px">'
-            +'<button class="btn btn-accent btn-sm" style="flex:1" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>'
-            +'<button class="btn btn-sm" style="background:#2a2a44;font-size:9px" onclick="event.stopPropagation();startCall(\''+a.id+'\',{audioMode:\'system\'})" title="Bridge system audio (Zoom/Meet)">Bridge</button>'
-            +'</div>';
+            +'<button class="btn btn-accent btn-sm" style="margin-top:6px;width:100%" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>';
         grid.appendChild(div);
     });
 }
@@ -1224,6 +1247,7 @@ async function startCall(agentId, options){
                 captureAgentAudio(track);
                 addTranscript('Agent connected','sys');
                 document.getElementById('callMeta').textContent='In call';
+                updateStreamStatus('Speaking with agent');
             }
         });
         // Capture transcriptions for context-aware director
@@ -1245,6 +1269,7 @@ async function startCall(agentId, options){
         });
         lkRoom.on(LivekitClient.RoomEvent.Disconnected,function(){
             document.getElementById('callMeta').textContent='Disconnected';
+            updateStreamStatus('Disconnected');
         });
 
         await lkRoom.connect(tok.url,tok.token);
@@ -1269,6 +1294,7 @@ async function startCall(agentId, options){
 
         addTranscript('Connected to room: '+tok.room+' (audio: '+audioMode+')','sys');
         document.getElementById('callMeta').textContent='In call ('+audioMode+')';
+        updateStreamStatus('Waiting for agent...');
     }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
@@ -1284,6 +1310,12 @@ function toggleMic(){
     micOn=!micOn;
     lkRoom.localParticipant.setMicrophoneEnabled(micOn);
     document.getElementById('btnMic').classList.toggle('muted',!micOn);
+    var sm=document.getElementById('sMic');
+    if(sm)sm.classList.toggle('muted',!micOn);
+}
+function updateStreamStatus(text){
+    var el=document.getElementById('sStatus');
+    if(el)el.textContent=text;
 }
 
 function addTranscript(text,type){
@@ -1403,18 +1435,25 @@ api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({
     var params=new URLSearchParams(location.search);
     if(params.get('mode')==='stream'){
         document.body.classList.add('stream-mode');
-        var agentId=params.get('agent_id')||'';
         var audioMode=params.get('audio')||'mic';
+        // Headless mode (audio=none) hides all interactive elements
+        if(audioMode==='none'){document.body.classList.add('stream-headless');}
+        var agentId=params.get('agent_id')||'';
         var room=params.get('room')||'';
         _audioInputMode=audioMode;
+
+        // Show floating overlay for interactive streams (not headless)
+        if(audioMode!=='none'){
+            var ov=document.getElementById('streamOverlay');
+            if(ov)ov.style.display='flex';
+        }
+
         if(agentId){
             setTimeout(function(){
                 startCall(agentId,{audioMode:audioMode,room:room});
-                // Resize after call page is shown (stream mode fullscreen)
                 setTimeout(function(){window.resizeRenderer();},500);
             },500);
         } else {
-            // No agent — just show the 3D room fullscreen
             showPage('call');
             setTimeout(function(){window.resizeRenderer();},300);
         }
