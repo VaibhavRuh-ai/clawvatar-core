@@ -33,12 +33,39 @@ AVATAR_DIR = Path.home() / ".clawvatar" / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Clawvatar", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# CORS — configurable via env. Default: allow all (development).
+# Production: set CLAWVATAR_CORS_ORIGINS=https://yourdomain.com
+_cors_origins = os.environ.get("CLAWVATAR_CORS_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 # Runtime state (not persisted)
 _engine = None
 _openclaw: Optional[OpenClawAdapter] = None
 _streamer: Optional[AvatarStreamer] = None
+
+
+# ==================== API Key Auth (optional) ====================
+
+from fastapi import Depends, Header, HTTPException, Request
+
+def _check_api_key(request: Request, x_api_key: Optional[str] = Header(None)):
+    """Optional API key auth. Set CLAWVATAR_API_KEY env var to enable."""
+    required_key = os.environ.get("CLAWVATAR_API_KEY", "")
+    if not required_key:
+        return  # auth disabled
+    # Skip auth for static files, embed, stream, and health
+    path = request.url.path
+    if path in ("/", "/app.js", "/embed", "/stream", "/api/health") or path.startswith("/api/stream/hls/"):
+        return
+    if x_api_key != required_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def _get_engine():
@@ -101,7 +128,7 @@ async def get_settings():
 
 
 @app.post("/api/settings")
-async def save_settings(body: dict):
+async def save_settings(body: dict, _=Depends(_check_api_key)):
     for k, v in body.items():
         if v:  # don't save empty values
             db.set_setting(k, str(v))
@@ -124,7 +151,7 @@ async def save_settings(body: dict):
 # ==================== OpenClaw ====================
 
 @app.post("/api/openclaw/connect")
-async def openclaw_connect(body: dict = {}):
+async def openclaw_connect(body: dict = {}, _=Depends(_check_api_key)):
     """Connect to OpenClaw gateway."""
     url = body.get("url") or db.get_setting("openclaw_url")
     token = body.get("token") or db.get_setting("openclaw_token")
@@ -194,6 +221,9 @@ async def assign_avatar_api(agent_id: str, body: dict):
     if not avatar_id:
         db.unassign_avatar(agent_id)
         return {"ok": True, "action": "unassigned"}
+    # Validate avatar exists
+    if not db.get_avatar(avatar_id):
+        return JSONResponse({"error": f"Avatar {avatar_id} not found"}, status_code=404)
     db.assign_avatar(agent_id, avatar_id)
     return {"ok": True, "action": "assigned"}
 
@@ -436,7 +466,7 @@ async def director_action(body: dict):
 # ==================== Streaming ====================
 
 @app.post("/api/stream/start")
-async def stream_start(body: dict):
+async def stream_start(body: dict, _=Depends(_check_api_key)):
     """Start headless avatar stream.
 
     Body: {agent_id, room?, width?, height?, fps?,
