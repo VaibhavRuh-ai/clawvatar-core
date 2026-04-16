@@ -1201,6 +1201,7 @@ function updateScene(dt){
 <script>
 // ===================== APP LOGIC =====================
 var animWs=null,lkRoom=null,micOn=true,currentAgent=null;
+var _activeSessions={};  // agent_id → {room, roomName, startedAt}
 
 // --- Pages ---
 function showPage(name){
@@ -1330,18 +1331,24 @@ async function loadAgents(){
             opts+='<option value="'+av.id+'"'+sel+'>'+av.name+'</option>';
         });
 
+        var inCall=!!_activeSessions[a.id];
+        var callBtnText=inCall?'Rejoin Call':'Call';
+        var callBtnStyle=inCall?'background:var(--green)':'';
+        var statusBadge=inCall?'<div style="font-size:9px;color:var(--green);font-weight:700;margin-top:4px">IN CALL</div>':'';
+
         div.innerHTML=
             '<div class="avatar-badge">'+(a.avatar_name?a.avatar_name[0].toUpperCase():'👤')+'</div>'
             +'<h3>'+a.id+'</h3>'
             +'<div class="meta">'
             +(a.has_soul?'✓ SOUL.md':'✗ No SOUL.md')+'<br>'
             +(a.model||'—')
+            +statusBadge
             +'</div>'
             +'<div style="margin-top:8px">'
             +'<select onchange="assignAvatar(\''+a.id+'\',this.value)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px;color:var(--text);font-size:10px">'
             +opts+'</select>'
             +'</div>'
-            +'<button class="btn btn-accent btn-sm" style="margin-top:6px;width:100%" onclick="event.stopPropagation();startCall(\''+a.id+'\')">Call</button>';
+            +'<button class="btn btn-accent btn-sm" style="margin-top:6px;width:100%;'+callBtnStyle+'" onclick="event.stopPropagation();startCall(\''+a.id+'\')">'+callBtnText+'</button>';
         grid.appendChild(div);
     });
 }
@@ -1504,14 +1511,22 @@ async function startCall(agentId, options){
         document.getElementById('callMeta').textContent='In call ('+audioMode+')';
         updateStreamStatus('Waiting for agent...');
         updateEmbedStatus((currentAgent||'Agent')+' — Waiting...',false);
+        // Track active session
+        _activeSessions[agentId]={room:lkRoom,roomName:tok.room,startedAt:Date.now()};
+        setDot('dotLk','on');
     }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
 function endCall(){
+    if(currentAgent)delete _activeSessions[currentAgent];
     if(lkRoom){lkRoom.disconnect();lkRoom=null;}
     if(animWs){animWs.close();animWs=null;}
     if(_systemAudioStream){_systemAudioStream.getTracks().forEach(function(t){t.stop()});_systemAudioStream=null;}
+    _metrics["calls_active"]=Math.max(0,(_metrics["calls_active"]||0)-1);
+    setDot('dotLk','off');
+    currentAgent=null;
     showPage('dashboard');
+    loadAgents(); // refresh to show updated call status
 }
 
 function toggleMic(){
