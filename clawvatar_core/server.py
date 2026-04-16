@@ -432,6 +432,7 @@ async def chat_ws(ws: WebSocket):
 
 _director_last_call: dict[str, float] = {}  # agent_id → timestamp
 _director_min_interval = 3.0  # seconds between calls per agent
+_group_calls: dict[str, "GroupCall"] = {}  # room_name → GroupCall
 
 @app.post("/api/director/action")
 async def director_action(body: dict):
@@ -467,6 +468,105 @@ async def director_action(body: dict):
         _metrics["director_errors"] += 1
         return {"look": "user", "gesture": "none", "expression": "neutral",
                 "move_to": "home", "duration": 4}
+
+
+# ==================== Group Calls ====================
+
+@app.post("/api/call/group")
+async def start_group_call(body: dict):
+    """Start a group call with multiple agents in one room.
+
+    Body: {agents: ["system-architect", "vp-developer", ...]}
+    Returns: {room, token, url, agents: [{id, identity, connected}]}
+    """
+    agent_ids = body.get("agents", [])
+    if not agent_ids:
+        return {"error": "No agents specified"}
+
+    from clawvatar_core.agent.room_manager import generate_token, create_room_name
+    from clawvatar_core.agent.group import GroupCall
+
+    # Set env vars from DB
+    for key in ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "GOOGLE_API_KEY"]:
+        val = db.get_setting(key.lower())
+        if val:
+            os.environ[key] = val
+
+    room_name = create_room_name(prefix="group")
+    user_token, url = generate_token(room_name, identity=f"user-{int(time.time())}")
+
+    # Create group call and add agents
+    gc = GroupCall(room_name)
+    for aid in agent_ids:
+        await gc.add_agent(aid)
+
+    _group_calls[room_name] = gc
+    _metrics["calls_total"] += 1
+    _metrics["calls_active"] += 1
+
+    # Start agents in background (don't block the response)
+    async def _start_agents():
+        try:
+            await gc.start()
+            logger.info(f"Group call started: {room_name} with {len(agent_ids)} agents")
+        except Exception as e:
+            logger.error(f"Group call start failed: {e}")
+
+    asyncio.create_task(_start_agents())
+
+    return {
+        "ok": True,
+        "room": room_name,
+        "token": user_token,
+        "url": url,
+        "agents": [{"id": aid} for aid in agent_ids],
+    }
+
+
+@app.post("/api/call/group/{room_name}/add")
+async def group_add_agent(room_name: str, body: dict):
+    """Add an agent to an existing group call."""
+    gc = _group_calls.get(room_name)
+    if not gc:
+        return {"error": "Group call not found"}
+    agent_id = body.get("agent_id", "")
+    if not agent_id:
+        return {"error": "agent_id required"}
+    await gc.add_agent(agent_id)
+    return {"ok": True, "status": gc.get_status()}
+
+
+@app.post("/api/call/group/{room_name}/remove")
+async def group_remove_agent(room_name: str, body: dict):
+    """Remove an agent from a group call."""
+    gc = _group_calls.get(room_name)
+    if not gc:
+        return {"error": "Group call not found"}
+    agent_id = body.get("agent_id", "")
+    if not agent_id:
+        return {"error": "agent_id required"}
+    await gc.remove_agent(agent_id)
+    return {"ok": True, "status": gc.get_status()}
+
+
+@app.post("/api/call/group/{room_name}/end")
+async def group_end_call(room_name: str):
+    """End a group call — all agents leave."""
+    gc = _group_calls.pop(room_name, None)
+    if not gc:
+        return {"error": "Group call not found"}
+    await gc.stop()
+    _metrics["calls_active"] = max(0, _metrics["calls_active"] - 1)
+    return {"ok": True}
+
+
+@app.get("/api/call/group/{room_name}/status")
+async def group_call_status(room_name: str):
+    """Get group call status."""
+    gc = _group_calls.get(room_name)
+    if not gc:
+        return {"error": "Group call not found"}
+    return gc.get_status()
 
 
 # ==================== Streaming ====================

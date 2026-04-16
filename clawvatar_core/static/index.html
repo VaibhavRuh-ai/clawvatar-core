@@ -98,6 +98,30 @@ input[type=file]{display:none}
 .empty-state .title{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--text)}
 .empty-state .desc{font-size:11px;line-height:1.6}
 
+/* Group call modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.active{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:90%;max-width:500px;max-height:80vh;overflow-y:auto}
+.modal h2{font-size:16px;margin-bottom:16px;color:var(--accent)}
+.agent-check{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s}
+.agent-check:hover{border-color:var(--accent)}
+.agent-check.selected{border-color:var(--green);background:rgba(74,222,128,.05)}
+.agent-check input{accent-color:var(--green)}
+.agent-check .name{font-size:13px;font-weight:600;flex:1}
+.agent-check .soul-tag{font-size:9px;padding:1px 6px;border-radius:4px;background:#152a15;color:var(--green)}
+
+/* Group call panel in sidebar */
+.group-panel{padding:8px 12px;border-bottom:1px solid var(--border)}
+.group-agent{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:11px;cursor:pointer;border-radius:6px;padding:6px 8px}
+.group-agent:hover{background:var(--bg3)}
+.group-agent.speaking{background:rgba(74,222,128,.1)}
+.group-agent .ga-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.group-agent .ga-dot.on{background:var(--green)}.group-agent .ga-dot.off{background:#444}
+.group-agent .ga-name{flex:1;font-weight:600;color:var(--text)}
+.group-agent .ga-voice{font-size:9px;color:var(--muted)}
+.group-agent .ga-remove{font-size:14px;color:var(--muted);cursor:pointer;padding:0 4px}
+.group-agent .ga-remove:hover{color:var(--red)}
+
 /* Responsive */
 @media(max-width:900px){
     .call-sidebar{width:280px}
@@ -185,6 +209,19 @@ body.embed-mode .embed-bar{display:flex!important}
 </style>
 </head>
 <body>
+<!-- Group Call Modal -->
+<div class="modal-overlay" id="groupModal">
+    <div class="modal">
+        <h2>Start Group Call</h2>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px">Select agents to include. Each agent joins with its own voice and personality.</p>
+        <div id="groupAgentList"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-sm" style="background:var(--bg3)" onclick="hideGroupCallModal()">Cancel</button>
+            <button class="btn btn-green btn-sm" id="btnStartGroup" onclick="startGroupCall()">Start Call</button>
+        </div>
+    </div>
+</div>
+
 <div class="app">
     <div class="toast-container" id="toasts"></div>
     <div class="topbar">
@@ -207,7 +244,10 @@ body.embed-mode .embed-bar{display:flex!important}
     <div class="content page active" id="page-dashboard">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h2 style="font-size:16px">Agents</h2>
-            <button class="btn btn-accent btn-sm" onclick="syncAgents()">Sync from OpenClaw</button>
+            <div style="display:flex;gap:6px">
+                <button class="btn btn-green btn-sm" onclick="showGroupCallModal()">Group Call</button>
+                <button class="btn btn-accent btn-sm" onclick="syncAgents()">Sync from OpenClaw</button>
+            </div>
         </div>
         <div class="agent-grid" id="agentGrid">
             <div class="empty-state">
@@ -1517,7 +1557,14 @@ async function startCall(agentId, options){
     }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
+var _groupCallRoom=null; // room name for active group call
+
 function endCall(){
+    // End group call if active
+    if(_groupCallRoom){
+        api('POST','/api/call/group/'+_groupCallRoom+'/end').catch(function(){});
+        _groupCallRoom=null;
+    }
     if(currentAgent)delete _activeSessions[currentAgent];
     if(lkRoom){lkRoom.disconnect();lkRoom=null;}
     if(animWs){animWs.close();animWs=null;}
@@ -1526,7 +1573,163 @@ function endCall(){
     setDot('dotLk','off');
     currentAgent=null;
     showPage('dashboard');
-    loadAgents(); // refresh to show updated call status
+    loadAgents();
+}
+
+// --- Group Call ---
+var _groupSelectedAgents=[];
+
+async function showGroupCallModal(){
+    var d=await api('GET','/api/agents');
+    var agents=d.agents||[];
+    var list=document.getElementById('groupAgentList');
+    list.innerHTML='';
+    _groupSelectedAgents=[];
+    agents.forEach(function(a){
+        var div=document.createElement('div');
+        div.className='agent-check';
+        div.innerHTML='<input type="checkbox" data-agent="'+a.id+'">'
+            +'<span class="name">'+a.id+'</span>'
+            +(a.has_soul?'<span class="soul-tag">SOUL</span>':'')
+            +(a.avatar_name?'<span style="font-size:9px;color:var(--muted)">'+a.avatar_name+'</span>':'');
+        div.onclick=function(e){
+            if(e.target.type==='checkbox')return;
+            var cb=div.querySelector('input');
+            cb.checked=!cb.checked;
+            cb.dispatchEvent(new Event('change'));
+        };
+        div.querySelector('input').onchange=function(){
+            div.classList.toggle('selected',this.checked);
+            if(this.checked)_groupSelectedAgents.push(a.id);
+            else _groupSelectedAgents=_groupSelectedAgents.filter(function(x){return x!==a.id;});
+            document.getElementById('btnStartGroup').textContent='Start Call ('+_groupSelectedAgents.length+')';
+        };
+        list.appendChild(div);
+    });
+    document.getElementById('groupModal').classList.add('active');
+}
+
+function hideGroupCallModal(){
+    document.getElementById('groupModal').classList.remove('active');
+}
+
+async function startGroupCall(){
+    if(_groupSelectedAgents.length===0){toast('Select at least one agent','error');return;}
+    hideGroupCallModal();
+
+    var btn=document.getElementById('btnStartGroup');
+    btn.classList.add('loading');
+
+    try{
+        var d=await api('POST','/api/call/group',{agents:_groupSelectedAgents});
+        if(d.error){toast('Error: '+d.error,'error');btn.classList.remove('loading');return;}
+
+        _groupCallRoom=d.room;
+        currentAgent=_groupSelectedAgents[0]; // first agent is "primary" for avatar
+        document.getElementById('callAgentName').textContent='Group: '+_groupSelectedAgents.join(', ');
+        document.getElementById('callMeta').innerHTML='<span class="spinner"></span> Connecting '+_groupSelectedAgents.length+' agents...';
+        document.getElementById('transcript').innerHTML='';
+        showPage('call');
+        setTimeout(function(){window.resizeRenderer();},100);
+
+        // Load avatar of first agent
+        var avInfo=await api('GET','/api/agents/'+currentAgent+'/avatar');
+        if(avInfo&&avInfo.file_path){
+            try{
+                var resp=await fetch('/api/avatars/'+avInfo.avatar_id+'/file');
+                if(resp.ok){var blob=await resp.blob();window.loadAvatar(URL.createObjectURL(blob));}
+            }catch(e){}
+        }
+
+        connectAnimWs();
+
+        // Connect user to the group room
+        lkRoom=new LivekitClient.Room({adaptiveStream:true,dynacast:true});
+        lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,function(track,pub,p){
+            if(track.kind==='audio'){
+                var el=track.attach();el.style.display='none';document.body.appendChild(el);
+                captureAgentAudio(track);
+                // Show which agent connected
+                var who=p.identity||'agent';
+                addTranscript(who+' joined','sys');
+                document.getElementById('callMeta').textContent='Group call active';
+                updateGroupPanel();
+            }
+        });
+        lkRoom.on(LivekitClient.RoomEvent.TranscriptionReceived,function(segments,participant){
+            try{segments.forEach(function(seg){
+                if(!seg.final)return;var text=seg.text||'';if(!text)return;
+                var who=participant&&participant.identity?participant.identity:'?';
+                if(who.startsWith('user')){
+                    if(typeof window.markUserSpoke==='function')window.markUserSpoke(text);
+                    addTranscript('You: '+text,'user');
+                }else{
+                    if(typeof window.markAgentSpoke==='function')window.markAgentSpoke(text);
+                    addTranscript(who+': '+text,'agent');
+                }
+            });}catch(e){}
+        });
+        lkRoom.on(LivekitClient.RoomEvent.Disconnected,function(){
+            document.getElementById('callMeta').textContent='Disconnected';
+        });
+
+        await lkRoom.connect(d.url,d.token);
+        await lkRoom.localParticipant.setMicrophoneEnabled(true);
+        micOn=true;
+        setDot('dotLk','on');
+
+        addTranscript('Group call started: '+d.room,'sys');
+        addTranscript('Agents: '+_groupSelectedAgents.join(', '),'sys');
+
+        // Build group panel in sidebar
+        buildGroupPanel(_groupSelectedAgents);
+
+        toast('Group call started with '+_groupSelectedAgents.length+' agents','success');
+    }catch(e){
+        toast('Group call error: '+e.message,'error');
+    }
+    btn.classList.remove('loading');
+}
+
+function buildGroupPanel(agents){
+    var info=document.querySelector('.call-info');
+    if(!info)return;
+    var panel=document.getElementById('groupPanel');
+    if(!panel){
+        panel=document.createElement('div');
+        panel.id='groupPanel';
+        panel.className='group-panel';
+        info.parentNode.insertBefore(panel,info.nextSibling);
+    }
+    panel.innerHTML='<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px">AGENTS IN CALL</div>';
+    agents.forEach(function(aid){
+        var div=document.createElement('div');
+        div.className='group-agent';
+        div.id='ga-'+aid;
+        div.innerHTML='<span class="ga-dot off"></span>'
+            +'<span class="ga-name">'+aid+'</span>'
+            +'<span class="ga-remove" onclick="removeFromGroup(\''+aid+'\')" title="Remove">&times;</span>';
+        panel.appendChild(div);
+    });
+}
+
+function updateGroupPanel(){
+    if(!lkRoom||!_groupCallRoom)return;
+    var participants=lkRoom.remoteParticipants;
+    participants.forEach(function(p){
+        var el=document.getElementById('ga-'+p.identity.replace('agent-',''));
+        if(el){
+            el.querySelector('.ga-dot').className='ga-dot on';
+        }
+    });
+}
+
+async function removeFromGroup(agentId){
+    if(!_groupCallRoom)return;
+    await api('POST','/api/call/group/'+_groupCallRoom+'/remove',{agent_id:agentId});
+    var el=document.getElementById('ga-'+agentId);
+    if(el)el.remove();
+    toast(agentId+' removed from call','info');
 }
 
 function toggleMic(){
