@@ -92,7 +92,7 @@ async def entrypoint(ctx: JobContext):
         instructions=instructions,
     )
     agent = Agent(instructions=instructions, tools=tools)
-    session = AgentSession(llm=model, tools=tools)
+    session = AgentSession(llm=model)
     await ctx.connect()
     await session.start(room=ctx.room, agent=agent)
 
