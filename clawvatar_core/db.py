@@ -118,7 +118,7 @@ def list_avatars() -> list[dict]:
 def delete_avatar(avatar_id: str):
     conn = get_db()
     conn.execute("DELETE FROM avatars WHERE id=?", (avatar_id,))
-    conn.execute("UPDATE agents SET avatar_id=NULL WHERE avatar_id=?", (avatar_id,))
+    conn.execute("DELETE FROM agent_avatars WHERE avatar_id=?", (avatar_id,))
     conn.commit()
     conn.close()
 

@@ -470,7 +470,6 @@ function makeSkyTexture(){
     x.fillStyle=g;x.fillRect(0,0,256,256);
     // Clouds
     x.fillStyle='rgba(255,255,255,0.6)';
-    [(40,80,30),(120,60,40),(180,90,25),(60,140,35)].forEach?null:0;
     [[40,80,30],[120,60,40],[180,90,25],[60,140,35]].forEach(c=>{x.beginPath();x.arc(c[0],c[1],c[2],0,Math.PI*2);x.fill();});
     return new THREE.CanvasTexture(c);
 }
@@ -1097,7 +1096,7 @@ async function saveSettings(){
 async function testOpenClaw(){
     document.getElementById('settingsMsg').textContent='Connecting...';
     var d=await api('POST','/api/openclaw/connect');
-    document.getElementById('settingsMsg').textContent=d.ok?'Connected! '+d.agents+' agents synced.':'Error: '+(d.error||'failed');
+    document.getElementById('settingsMsg').textContent=d.ok?'Connected! '+d.agents_count+' agents synced.':'Error: '+(d.error||'failed');
     document.getElementById('settingsMsg').style.color=d.ok?'var(--green)':'var(--red)';
     if(d.ok){loadAgents();updateOcPill({connected:true});}
 }

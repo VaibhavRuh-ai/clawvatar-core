@@ -430,10 +430,14 @@ async def stream_start(body: dict):
     fps = int(body.get("fps", 30))
     outputs = body.get("outputs", {"hls": True})
 
-    # Build server URL from request context
-    ssl_cert = os.environ.get("SSL_CERT", "")
-    protocol = "https" if ssl_cert else "https"
-    server_url = f"{protocol}://localhost:8766"
+    # Build server URL — check if SSL cert was passed to the serve command
+    port = int(os.environ.get("CLAWVATAR_PORT", "8766"))
+    # Detect SSL from the uvicorn config (ssl_keyfile is set in cli.py)
+    has_ssl = bool(os.environ.get("SSL_CERT", "")) or any(
+        "ssl" in str(getattr(app, k, "")) for k in dir(app)
+    )
+    protocol = "https"  # default to https since we always use SSL cert
+    server_url = f"{protocol}://localhost:{port}"
 
     _streamer = AvatarStreamer(
         server_url=server_url,

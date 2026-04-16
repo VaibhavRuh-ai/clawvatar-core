@@ -71,20 +71,17 @@ def _agent(args):
         if val:
             os.environ.setdefault(key.upper(), val)
 
-    # Get agent instructions from DB (SOUL.md)
+    # Get agent instructions from SOUL.md
     instructions = "You are a helpful AI assistant."
     if args.agent_id:
-        agent = db.get_agent(args.agent_id)
-        if agent:
-            soul = agent.get("soul_md", "")
-            override = agent.get("instructions_override", "")
-            if override:
-                instructions = override
-            elif soul:
-                # Use first 2000 chars of SOUL.md as instructions
-                instructions = f"You are the {args.agent_id} agent. Follow your role:\n\n{soul[:2000]}"
-            if agent.get("provider"):
-                args.provider = agent["provider"]
+        soul = db.read_soul_md(args.agent_id)
+        if soul:
+            instructions = (
+                f"You are the {args.agent_id} agent. "
+                f"Speak and behave according to your role. "
+                f"Keep voice responses concise (1-3 sentences).\n\n"
+                f"YOUR ROLE:\n{soul[:2000]}"
+            )
 
     from clawvatar_core.agent.worker import ClawvatarAgentWorker
     worker = ClawvatarAgentWorker(
