@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  # Core server — UI, API, animation WebSocket
+  server:
+    build: .
+    ports:
+      - "${PORT:-8766}:8766"
+    volumes:
+      - clawvatar-data:/root/.clawvatar
+      - ${SSL_CERT:-/dev/null}:/certs/cert.pem:ro
+      - ${SSL_KEY:-/dev/null}:/certs/key.pem:ro
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LIVEKIT_URL=${LIVEKIT_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+    command: >
+      clawvatar-core serve --port 8766
+      ${SSL_CERT:+--ssl-cert /certs/cert.pem}
+      ${SSL_KEY:+--ssl-key /certs/key.pem}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # LiveKit agent worker — handles voice calls
+  agent:
+    build: .
+    depends_on:
+      server:
+        condition: service_healthy
+    volumes:
+      - clawvatar-data:/root/.clawvatar
+      - ${OPENCLAW_DIR:-~/.openclaw}:/root/.openclaw:ro
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LIVEKIT_URL=${LIVEKIT_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+    command: python -m clawvatar_core.agent.run
+    restart: unless-stopped
+
+volumes:
+  clawvatar-data:
