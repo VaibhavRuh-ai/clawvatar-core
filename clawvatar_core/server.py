@@ -497,6 +497,13 @@ async def stream_view():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/embed")
+async def embed_view():
+    """Compact embed widget — iframe-friendly avatar with mic button.
+    Usage: <iframe src="https://host/embed?agent_id=X" allow="microphone"></iframe>"""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/api/health")
 async def health():
     return {

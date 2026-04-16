@@ -101,6 +101,31 @@ body.stream-headless .stream-overlay{display:none!important}
 .stream-overlay .send{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:var(--red);display:flex;align-items:center;justify-content:center}
 .stream-overlay .send svg{width:18px;height:18px;fill:#fff}
 
+/* Embed mode — compact widget for iframes */
+body.embed-mode{background:transparent!important;overflow:hidden;margin:0;padding:0}
+body.embed-mode .app{height:100%;background:transparent}
+body.embed-mode .topbar{display:none!important}
+body.embed-mode .content{display:none!important}
+body.embed-mode .call-page{display:flex!important;height:100vh!important;background:transparent}
+body.embed-mode .call-sidebar{display:none!important;width:0!important}
+body.embed-mode .call-viewport{flex:1!important;width:100%!important;height:100%!important;background:transparent!important;border-radius:16px;overflow:hidden}
+body.embed-mode .call-viewport .hud{display:none!important}
+body.embed-mode .call-viewport>div:not(#c):not(.embed-bar){display:none!important}
+body.embed-mode canvas{border-radius:16px}
+body.embed-mode .stream-overlay{display:none!important}
+/* Embed bar — compact controls at bottom of widget */
+.embed-bar{position:absolute;bottom:0;left:0;right:0;display:none;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:linear-gradient(transparent,rgba(0,0,0,.7));z-index:10}
+body.embed-mode .embed-bar{display:flex!important}
+.embed-bar .ename{font-size:11px;color:#ccc;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.embed-bar .emic{width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;transition:all .2s;backdrop-filter:blur(4px)}
+.embed-bar .emic:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.5)}
+.embed-bar .emic.muted{background:rgba(255,50,50,.4);border-color:rgba(255,50,50,.6)}
+.embed-bar .emic svg{width:16px;height:16px;fill:#fff}
+.embed-bar .edot{width:6px;height:6px;border-radius:50%;background:#444}
+.embed-bar .edot.live{background:var(--green);animation:pulse 1.5s infinite}
+.embed-bar .epow{font-size:9px;color:#666;text-decoration:none}
+.embed-bar .epow:hover{color:#999}
+
 /* Streaming tab */
 .stream-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px}
 @media(max-width:768px){.stream-grid{grid-template-columns:1fr}}
@@ -318,11 +343,33 @@ body.stream-headless .stream-overlay{display:none!important}
                         </ol>
                     </div>
                     <div class="platform-card">
-                        <h4>Embed on Website</h4>
+                        <h4>Embed on Website (Recommended)</h4>
                         <ol>
-                            <li>Use <b>HLS URL</b> with hls.js or native Safari</li>
-                            <li><code style="color:var(--blue)">&lt;video src="HLS_URL"&gt;</code></li>
+                            <li>Pick an agent above, copy the embed code below</li>
+                            <li>Paste into your website HTML</li>
+                            <li>Visitors click mic to talk to the avatar</li>
                         </ol>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Embed Code</h2>
+                    <div class="field"><label>Agent</label>
+                        <select id="embed_agent" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12px" onchange="updateEmbedCode()">
+                            <option value="">Select agent...</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px">
+                        <div class="field" style="flex:1"><label>Width</label><input id="embed_w" value="400" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px" onchange="updateEmbedCode()"></div>
+                        <div class="field" style="flex:1"><label>Height</label><input id="embed_h" value="500" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px" onchange="updateEmbedCode()"></div>
+                    </div>
+                    <div class="field"><label>Embed Code (copy and paste into your site)</label>
+                        <textarea id="embedCode" readonly rows="4" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--blue);font-size:11px;font-family:monospace;resize:vertical" onclick="this.select()"></textarea>
+                    </div>
+                    <div class="field"><label>Preview</label>
+                        <div id="embedPreview" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;min-height:80px">
+                            <span style="font-size:11px;color:var(--muted)">Select an agent to preview embed code</span>
+                        </div>
                     </div>
                 </div>
 
@@ -361,6 +408,15 @@ body.stream-headless .stream-overlay{display:none!important}
                 <span style="width:1px;height:18px;background:#333;margin:0 4px"></span>
                 <button id="cineBtn" onclick="toggleCinematic()" style="padding:2px 8px;border-radius:4px;border:1px solid #555;cursor:pointer;background:#7c6ef0;color:#fff;font-size:10px" title="Toggle cinematic camera">🎬 Auto</button>
             </div>
+        </div>
+        <!-- Embed bar (visible only in embed mode) -->
+        <div class="embed-bar" id="embedBar">
+            <span class="edot" id="eDot"></span>
+            <span class="ename" id="eName">Connecting...</span>
+            <button class="emic" id="eMic" onclick="toggleMic()">
+                <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </button>
+            <a class="epow" href="https://github.com/VaibhavRuh-ai/clawvatar-core" target="_blank">Clawvatar</a>
         </div>
         <!-- Stream overlay (visible only in stream mode, not headless) -->
         <div class="stream-overlay" id="streamOverlay" style="display:none">
@@ -1247,6 +1303,7 @@ async function startCall(agentId, options){
                 addTranscript('Agent connected','sys');
                 document.getElementById('callMeta').textContent='In call';
                 updateStreamStatus('Speaking with agent');
+                updateEmbedStatus((currentAgent||'Agent')+' — Speaking',true);
             }
         });
         // Capture transcriptions for context-aware director
@@ -1294,6 +1351,7 @@ async function startCall(agentId, options){
         addTranscript('Connected to room: '+tok.room+' (audio: '+audioMode+')','sys');
         document.getElementById('callMeta').textContent='In call ('+audioMode+')';
         updateStreamStatus('Waiting for agent...');
+        updateEmbedStatus((currentAgent||'Agent')+' — Waiting...',false);
     }catch(e){addTranscript('Join error: '+e.message,'sys');}
 }
 
@@ -1311,10 +1369,18 @@ function toggleMic(){
     document.getElementById('btnMic').classList.toggle('muted',!micOn);
     var sm=document.getElementById('sMic');
     if(sm)sm.classList.toggle('muted',!micOn);
+    var em=document.getElementById('eMic');
+    if(em)em.classList.toggle('muted',!micOn);
 }
 function updateStreamStatus(text){
     var el=document.getElementById('sStatus');
     if(el)el.textContent=text;
+}
+function updateEmbedStatus(text,live){
+    var en=document.getElementById('eName');
+    var ed=document.getElementById('eDot');
+    if(en)en.textContent=text;
+    if(ed)ed.className='edot'+(live?' live':'');
 }
 
 function addTranscript(text,type){
@@ -1429,10 +1495,44 @@ setInterval(tickDirector, 4000);
 // Check OpenClaw status
 api('GET','/api/openclaw/status').then(function(d){if(d.connected)updateOcPill({connected:true});});
 
+// === Embed mode: /embed?agent_id=X or ?mode=embed&agent_id=X ===
+(function(){
+    var params=new URLSearchParams(location.search);
+    var isEmbed=params.get('mode')==='embed'||location.pathname==='/embed';
+    if(isEmbed){
+        document.body.classList.add('embed-mode');
+        var agentId=params.get('agent_id')||'';
+        var theme=params.get('theme')||'transparent';
+
+        // Apply theme to scene background
+        if(theme==='transparent'){
+            // Transparent background — website shows through
+            setTimeout(function(){
+                if(window.setBackground)window.setBackground('#0a0a12');
+            },500);
+        }
+
+        // Update embed bar with agent name
+        var eName=document.getElementById('eName');
+        if(eName)eName.textContent=agentId||'Assistant';
+
+        if(agentId){
+            setTimeout(function(){
+                startCall(agentId,{audioMode:'mic'});
+                setTimeout(function(){window.resizeRenderer();},500);
+            },500);
+        } else {
+            showPage('call');
+            setTimeout(function(){window.resizeRenderer();},300);
+        }
+    }
+})();
+
 // === Stream mode: ?mode=stream&agent_id=X&audio=mic|system|none ===
 (function(){
     var params=new URLSearchParams(location.search);
-    if(params.get('mode')==='stream'){
+    var isStream=params.get('mode')==='stream'||location.pathname==='/stream';
+    if(isStream){
         document.body.classList.add('stream-mode');
         var audioMode=params.get('audio')||'mic';
         // Headless mode (audio=none) hides all interactive elements
@@ -1475,12 +1575,40 @@ document.getElementById('stream_audio').onchange=function(){
 async function populateStreamAgents(){
     try{
         var d=await api('GET','/api/agents');
+        var agents=d.agents||[];
+        // Stream agent dropdown
         var sel=document.getElementById('stream_agent');
         sel.innerHTML='<option value="">Select agent...</option>';
-        (d.agents||[]).forEach(function(a){
+        agents.forEach(function(a){
             sel.innerHTML+='<option value="'+a.id+'">'+a.id+(a.avatar_name?' ('+a.avatar_name+')':'')+'</option>';
         });
+        // Embed agent dropdown
+        var esel=document.getElementById('embed_agent');
+        if(esel){
+            esel.innerHTML='<option value="">Select agent...</option>';
+            agents.forEach(function(a){
+                esel.innerHTML+='<option value="'+a.id+'">'+a.id+(a.avatar_name?' ('+a.avatar_name+')':'')+'</option>';
+            });
+        }
     }catch(e){}
+}
+
+function updateEmbedCode(){
+    var agentId=document.getElementById('embed_agent').value;
+    var w=document.getElementById('embed_w').value||'400';
+    var h=document.getElementById('embed_h').value||'500';
+    var code=document.getElementById('embedCode');
+    var preview=document.getElementById('embedPreview');
+    if(!agentId){
+        code.value='';
+        preview.innerHTML='<span style="font-size:11px;color:var(--muted)">Select an agent to preview embed code</span>';
+        return;
+    }
+    var base=location.protocol+'//'+location.host;
+    var src=base+'/embed?mode=embed&agent_id='+encodeURIComponent(agentId);
+    code.value='<iframe\n  src="'+src+'"\n  width="'+w+'" height="'+h+'"\n  style="border:none;border-radius:16px"\n  allow="microphone"\n></iframe>';
+    preview.innerHTML='<div style="text-align:left;font-size:11px;color:var(--muted);margin-bottom:8px">Live preview ('+w+'x'+h+'):</div>'
+        +'<iframe src="'+src+'" width="'+Math.min(parseInt(w),350)+'" height="'+Math.min(parseInt(h),300)+'" style="border:none;border-radius:16px" allow="microphone"></iframe>';
 }
 
 async function startStream(){
