@@ -192,6 +192,7 @@ body.embed-mode .embed-bar{display:flex!important}
         <nav>
             <a class="active" onclick="showPage('dashboard')">Dashboard</a>
             <a onclick="showPage('streaming')">Streaming</a>
+            <a onclick="showPage('status')">Status</a>
             <a onclick="showPage('settings')">Settings</a>
         </nav>
         <div class="spacer"></div>
@@ -222,6 +223,50 @@ body.embed-mode .embed-bar{display:flex!important}
             Upload .vrm avatar
         </div>
         <input type="file" id="avatarUpload" accept=".vrm,.glb">
+    </div>
+
+    <!-- Settings -->
+    <!-- Status / Monitoring -->
+    <div class="content page" id="page-status">
+        <h2 style="font-size:16px;margin-bottom:16px">System Status</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+            <div class="card" id="statUptime">
+                <h2>Uptime</h2>
+                <div style="font-size:24px;font-weight:700;color:var(--green)" id="mUptime">—</div>
+            </div>
+            <div class="card" id="statCalls">
+                <h2>Calls</h2>
+                <div style="font-size:24px;font-weight:700;color:var(--blue)" id="mCalls">0</div>
+                <div style="font-size:10px;color:var(--muted)">total</div>
+            </div>
+            <div class="card" id="statDirector">
+                <h2>Director</h2>
+                <div style="font-size:24px;font-weight:700;color:var(--accent)" id="mDirector">0</div>
+                <div style="font-size:10px;color:var(--muted)">actions generated</div>
+            </div>
+            <div class="card" id="statWs">
+                <h2>WebSocket</h2>
+                <div style="font-size:24px;font-weight:700;color:var(--text)" id="mWs">0</div>
+                <div style="font-size:10px;color:var(--muted)">active connections</div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px">
+            <div class="card">
+                <h2>Connections</h2>
+                <div class="status-row"><span class="k">OpenClaw Gateway</span><span class="v" id="mOc">—</span></div>
+                <div class="status-row"><span class="k">Animation Engine</span><span class="v" id="mEng">—</span></div>
+                <div class="status-row"><span class="k">Video Stream</span><span class="v" id="mStream">—</span></div>
+                <div class="status-row"><span class="k">Server Version</span><span class="v">0.1.0</span></div>
+            </div>
+            <div class="card">
+                <h2>Resources</h2>
+                <div class="status-row"><span class="k">Agents</span><span class="v" id="mAgents">—</span></div>
+                <div class="status-row"><span class="k">Avatars</span><span class="v" id="mAvatars">—</span></div>
+                <div class="status-row"><span class="k">Director Model</span><span class="v" id="mModel">—</span></div>
+                <div class="status-row"><span class="k">Director Errors</span><span class="v" id="mDErr">0</span></div>
+            </div>
+        </div>
     </div>
 
     <!-- Settings -->
@@ -1164,6 +1209,7 @@ function showPage(name){
     document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('active',a.textContent.toLowerCase()===name)});
     if(name==='call')window.resizeRenderer();
     if(name==='streaming')populateStreamAgents();
+    if(name==='status')refreshMetrics();
 }
 
 // --- API helpers ---
@@ -1239,6 +1285,28 @@ async function pollHealth(){
 }
 setInterval(pollHealth,10000);
 setTimeout(pollHealth,1000);
+
+// --- Metrics for Status page ---
+async function refreshMetrics(){
+    try{
+        var m=await api('GET','/api/metrics');
+        document.getElementById('mUptime').textContent=m.uptime_human||'—';
+        document.getElementById('mCalls').textContent=m.counts.calls_total||0;
+        document.getElementById('mDirector').textContent=m.director.calls||0;
+        document.getElementById('mWs').textContent=m.counts.ws_connections||0;
+        document.getElementById('mOc').innerHTML=m.connections.openclaw?'<span style="color:var(--green)">Connected</span>':'<span style="color:var(--red)">Disconnected</span>';
+        document.getElementById('mEng').innerHTML=m.connections.engine?'<span style="color:var(--green)">Running</span>':'<span style="color:var(--red)">Stopped</span>';
+        document.getElementById('mStream').innerHTML=m.connections.streaming?'<span style="color:var(--green)">Live</span>':'<span style="color:var(--muted)">Off</span>';
+        document.getElementById('mAgents').textContent=m.counts.agents||0;
+        document.getElementById('mAvatars').textContent=m.counts.avatars||0;
+        document.getElementById('mModel').textContent=m.director.model||'—';
+        document.getElementById('mDErr').textContent=m.director.errors||0;
+    }catch(e){}
+}
+// Auto-refresh metrics when Status tab is visible
+setInterval(function(){
+    if(document.getElementById('page-status')&&document.getElementById('page-status').classList.contains('active'))refreshMetrics();
+},5000);
 
 // --- Agents ---
 var _avatarsList=[];

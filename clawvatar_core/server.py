@@ -301,6 +301,8 @@ async def get_token(agent_id: str = "", room: str = ""):
     try:
         room_name = room or create_room_name(prefix=agent_id or "clawvatar")
         token, url = generate_token(room_name, identity=f"user-{int(time.time())}")
+        _metrics["calls_total"] += 1
+        _metrics["calls_active"] += 1
         return {"token": token, "url": url, "room": room_name}
     except Exception as e:
         return {"error": str(e)}
@@ -327,6 +329,7 @@ async def engine_load_avatar(body: dict):
 async def animation_ws(ws: WebSocket):
     """WebSocket for avatar animation — idle streaming + audio processing."""
     await ws.accept()
+    _metrics["ws_connections"] += 1
     engine = _get_engine()
     if not engine.is_connected:
         await engine.connect()
@@ -376,6 +379,7 @@ async def animation_ws(ws: WebSocket):
     finally:
         alive = False
         idle_task.cancel()
+        _metrics["ws_connections"] = max(0, _metrics["ws_connections"] - 1)
 
 
 # ==================== Chat (OpenClaw delegation) ====================
@@ -446,6 +450,7 @@ async def director_action(body: dict):
         return {"look": "user", "gesture": "none", "expression": "neutral",
                 "move_to": "home", "duration": 4, "_rate_limited": True}
     _director_last_call[agent_id] = now
+    _metrics["director_calls"] += 1
 
     try:
         api_key = db.get_setting("google_api_key")
@@ -459,6 +464,7 @@ async def director_action(body: dict):
         return action
     except Exception as e:
         logger.warning(f"Director error: {e}")
+        _metrics["director_errors"] += 1
         return {"look": "user", "gesture": "none", "expression": "neutral",
                 "move_to": "home", "duration": 4}
 
@@ -565,6 +571,56 @@ async def health():
         "openclaw_connected": _openclaw is not None and _openclaw.is_connected,
         "engine_connected": _engine is not None and _engine.is_connected,
         "streaming": _streamer is not None and _streamer.is_streaming,
+    }
+
+
+# ==================== Metrics ====================
+
+_metrics = {
+    "server_start": time.time(),
+    "calls_total": 0,
+    "calls_active": 0,
+    "director_calls": 0,
+    "director_errors": 0,
+    "avatars_loaded": 0,
+    "ws_connections": 0,
+}
+
+
+@app.get("/api/metrics")
+async def metrics():
+    """Detailed system metrics for monitoring dashboard."""
+    uptime = int(time.time() - _metrics["server_start"])
+    agents_count = 0
+    avatars_count = 0
+    try:
+        avatars_count = len(db.list_avatars())
+        if _openclaw and _openclaw.is_connected:
+            agents_count = len(await _openclaw.list_agents())
+    except Exception:
+        pass
+
+    return {
+        "uptime": uptime,
+        "uptime_human": f"{uptime//3600}h {(uptime%3600)//60}m {uptime%60}s",
+        "connections": {
+            "openclaw": _openclaw is not None and _openclaw.is_connected,
+            "engine": _engine is not None and _engine.is_connected,
+            "streaming": _streamer is not None and _streamer.is_streaming,
+        },
+        "counts": {
+            "agents": agents_count,
+            "avatars": avatars_count,
+            "calls_total": _metrics["calls_total"],
+            "calls_active": _metrics["calls_active"],
+            "ws_connections": _metrics["ws_connections"],
+        },
+        "director": {
+            "calls": _metrics["director_calls"],
+            "errors": _metrics["director_errors"],
+            "model": "gemini-2.5-flash-lite",
+        },
+        "stream": _streamer.get_status() if _streamer else {"status": "stopped"},
     }
 
 
