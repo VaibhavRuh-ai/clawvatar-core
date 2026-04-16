@@ -1,0 +1,19 @@
+[Unit]
+Description=Clawvatar Core Server
+After=network.target
+Wants=clawvatar-agent.service
+
+[Service]
+Type=simple
+User=vaibhav
+WorkingDirectory=/home/vaibhav/clawvatar-core
+EnvironmentFile=-/home/vaibhav/clawvatar-core/.env
+ExecStart=/home/vaibhav/clawvatar-engine/.venv/bin/clawvatar-core serve --port 8766 --ssl-cert ${SSL_CERT} --ssl-key ${SSL_KEY}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clawvatar-server
+
+[Install]
+WantedBy=multi-user.target

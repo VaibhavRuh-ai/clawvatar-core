@@ -1,0 +1,19 @@
+[Unit]
+Description=Clawvatar LiveKit Agent Worker
+After=network.target clawvatar-server.service
+Requires=clawvatar-server.service
+
+[Service]
+Type=simple
+User=vaibhav
+WorkingDirectory=/home/vaibhav/clawvatar-core
+EnvironmentFile=-/home/vaibhav/clawvatar-core/.env
+ExecStart=/home/vaibhav/clawvatar-engine/.venv/bin/python3 -m clawvatar_core.agent.run
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clawvatar-agent
+
+[Install]
+WantedBy=multi-user.target
