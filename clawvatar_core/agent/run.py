@@ -56,14 +56,33 @@ async def entrypoint(ctx: JobContext):
     soul = read_soul(agent_id) if agent_id else ""
     logger.info(f"Room: {room_name}, Agent: {agent_id}, SOUL: {len(soul)} chars")
 
+    # Build tools — connect OpenClaw bridge for task delegation
+    tools = []
+    try:
+        from clawvatar_core.agent.openclaw_bridge import OpenClawBridge
+        bridge = OpenClawBridge()
+        tools = bridge.create_tools()
+        logger.info(f"OpenClaw bridge: {len(tools)} delegation tools loaded")
+    except Exception as e:
+        logger.warning(f"OpenClaw bridge not available: {e}")
+
     if soul:
         instructions = (
             f"You are the {agent_id} agent. "
             f"Speak and behave according to your role. "
             f"Keep voice responses concise (1-3 sentences). "
-            f"When asked complex tasks (write code, review, test, deploy, plan), "
-            f"tell the user you'll delegate it.\n\nYOUR ROLE:\n{soul[:3000]}"
         )
+        if tools:
+            instructions += (
+                f"You have tools to delegate tasks to other agents. "
+                f"When asked to write code, use delegate_to_developer. "
+                f"When asked to review code, use delegate_to_reviewer. "
+                f"When asked to run tests, use delegate_to_tester. "
+                f"When asked to deploy, use delegate_to_devops. "
+                f"When asked to plan features, use delegate_to_manager. "
+                f"After delegating, briefly summarize the result to the user.\n\n"
+            )
+        instructions += f"YOUR ROLE:\n{soul[:3000]}"
     else:
         instructions = f"You are the {agent_id or 'assistant'}. Be helpful and concise."
 
@@ -72,8 +91,8 @@ async def entrypoint(ctx: JobContext):
         voice="Puck",
         instructions=instructions,
     )
-    agent = Agent(instructions=instructions)
-    session = AgentSession(llm=model)
+    agent = Agent(instructions=instructions, tools=tools)
+    session = AgentSession(llm=model, tools=tools)
     await ctx.connect()
     await session.start(room=ctx.room, agent=agent)
 
