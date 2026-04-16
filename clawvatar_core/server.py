@@ -44,9 +44,13 @@ _streamer: Optional[AvatarStreamer] = None
 def _get_engine():
     global _engine
     if _engine is None:
-        from clawvatar_core.engine.embedded import EmbeddedEngineClient
-        from clawvatar_core.config import EngineConfig
-        _engine = EmbeddedEngineClient(EngineConfig())
+        try:
+            from clawvatar_core.engine.embedded import EmbeddedEngineClient
+            from clawvatar_core.config import EngineConfig
+            _engine = EmbeddedEngineClient(EngineConfig())
+        except Exception as e:
+            logger.error(f"Engine init failed: {e}")
+            raise
     return _engine
 
 
@@ -393,21 +397,40 @@ async def chat_ws(ws: WebSocket):
 # ==================== Health ====================
 
 @app.post("/api/director/action")
+_director_last_call: dict[str, float] = {}  # agent_id → timestamp
+_director_min_interval = 3.0  # seconds between calls per agent
+
 async def director_action(body: dict):
     """Get an idle action from the director LLM (fire-and-forget from client).
 
-    Body: {agent_id, last_user, last_agent, idle_seconds, last_action}
-    Returns: {look, gesture, expression, duration}
+    Body: {agent_id, transcript, idle_seconds, last_action}
+    Returns: {look, gesture, expression, move_to, duration}
+    Rate-limited to 1 call per 3 seconds per agent.
     """
-    api_key = db.get_setting("google_api_key")
-    director = IdleDirector(api_key=api_key)
-    action = await director.pick_action(
-        agent_id=body.get("agent_id", ""),
-        transcript=body.get("transcript", ""),
-        idle_seconds=float(body.get("idle_seconds", 5)),
-        last_action=body.get("last_action", ""),
-    )
-    return action
+    agent_id = body.get("agent_id", "default")
+
+    # Rate limit per agent
+    now = time.time()
+    last = _director_last_call.get(agent_id, 0)
+    if now - last < _director_min_interval:
+        return {"look": "user", "gesture": "none", "expression": "neutral",
+                "move_to": "home", "duration": 4, "_rate_limited": True}
+    _director_last_call[agent_id] = now
+
+    try:
+        api_key = db.get_setting("google_api_key")
+        director = IdleDirector(api_key=api_key)
+        action = await director.pick_action(
+            agent_id=agent_id,
+            transcript=body.get("transcript", ""),
+            idle_seconds=float(body.get("idle_seconds", 5)),
+            last_action=body.get("last_action", ""),
+        )
+        return action
+    except Exception as e:
+        logger.warning(f"Director error: {e}")
+        return {"look": "user", "gesture": "none", "expression": "neutral",
+                "move_to": "home", "duration": 4}
 
 
 # ==================== Streaming ====================
