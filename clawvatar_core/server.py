@@ -426,10 +426,10 @@ async def chat_ws(ws: WebSocket):
 
 # ==================== Health ====================
 
-@app.post("/api/director/action")
 _director_last_call: dict[str, float] = {}  # agent_id → timestamp
 _director_min_interval = 3.0  # seconds between calls per agent
 
+@app.post("/api/director/action")
 async def director_action(body: dict):
     """Get an idle action from the director LLM (fire-and-forget from client).
 

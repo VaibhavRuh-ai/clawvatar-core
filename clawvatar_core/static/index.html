@@ -73,6 +73,45 @@ input[type=file]{display:none}
 .status-row{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)}
 .status-row .k{color:var(--muted)}.status-row .v{color:var(--text)}
 
+/* Toast notifications */
+.toast-container{position:fixed;top:52px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--text);pointer-events:auto;animation:toastIn .3s ease;box-shadow:0 4px 12px rgba(0,0,0,.4);max-width:320px;display:flex;align-items:center;gap:8px}
+.toast.success{border-color:#22663a}.toast.error{border-color:#662230}.toast.info{border-color:#15152a}
+.toast .icon{font-size:14px;flex-shrink:0}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+
+/* Loading spinner */
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn.loading{opacity:.7;pointer-events:none}
+.btn.loading::after{content:'';display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-left:6px;vertical-align:middle}
+
+/* Connection bar */
+.conn-bar{display:flex;gap:12px;align-items:center;font-size:10px;margin-left:auto}
+.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.conn-dot.on{background:var(--green)}.conn-dot.off{background:var(--red)}.conn-dot.warn{background:#f0a030}
+.conn-item{display:flex;align-items:center;gap:4px;color:var(--muted)}
+
+/* Empty state */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .icon{font-size:32px;margin-bottom:8px;opacity:.5}
+.empty-state .title{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--text)}
+.empty-state .desc{font-size:11px;line-height:1.6}
+
+/* Responsive */
+@media(max-width:900px){
+    .call-sidebar{width:280px}
+    .agent-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+}
+@media(max-width:600px){
+    .topbar{padding:6px 10px}
+    nav a{padding:4px 8px;font-size:10px}
+    .content{padding:12px}
+    .call-sidebar{display:none}
+    .agent-grid{grid-template-columns:1fr}
+    .stream-grid{grid-template-columns:1fr}
+}
+
 /* Hidden pages */
 .page{display:none}.page.active{display:block}
 .call-page{display:none}.call-page.active{display:flex}
@@ -147,6 +186,7 @@ body.embed-mode .embed-bar{display:flex!important}
 </head>
 <body>
 <div class="app">
+    <div class="toast-container" id="toasts"></div>
     <div class="topbar">
         <h1><b>Claw</b>vatar</h1>
         <nav>
@@ -155,7 +195,11 @@ body.embed-mode .embed-bar{display:flex!important}
             <a onclick="showPage('settings')">Settings</a>
         </nav>
         <div class="spacer"></div>
-        <span id="pOc" class="pill off">OpenClaw</span>
+        <div class="conn-bar">
+            <span class="conn-item"><span class="conn-dot off" id="dotOc"></span> OpenClaw</span>
+            <span class="conn-item"><span class="conn-dot off" id="dotEng"></span> Engine</span>
+            <span class="conn-item"><span class="conn-dot off" id="dotLk"></span> LiveKit</span>
+        </div>
     </div>
 
     <!-- Dashboard -->
@@ -165,8 +209,10 @@ body.embed-mode .embed-bar{display:flex!important}
             <button class="btn btn-accent btn-sm" onclick="syncAgents()">Sync from OpenClaw</button>
         </div>
         <div class="agent-grid" id="agentGrid">
-            <div class="card" style="text-align:center;color:var(--muted);padding:40px">
-                Configure OpenClaw in Settings to discover agents.
+            <div class="empty-state">
+                <div class="icon">🤖</div>
+                <div class="title">No agents yet</div>
+                <div class="desc">Configure OpenClaw in Settings to discover agents</div>
             </div>
         </div>
 
@@ -1146,6 +1192,8 @@ async function saveSettings(){
         if(el&&el.value&&!el.value.includes('...'))body[k]=el.value;
     });
     var d=await api('POST','/api/settings',body);
+    if(d.ok){toast('Settings saved','success');}
+    else{toast('Error: '+(d.error||'unknown'),'error');}
     document.getElementById('settingsMsg').textContent=d.ok?'Saved!':'Error: '+(d.error||'unknown');
     document.getElementById('settingsMsg').style.color=d.ok?'var(--green)':'var(--red)';
 }
@@ -1154,12 +1202,43 @@ async function testOpenClaw(){
     var d=await api('POST','/api/openclaw/connect');
     document.getElementById('settingsMsg').textContent=d.ok?'Connected! '+d.agents_count+' agents synced.':'Error: '+(d.error||'failed');
     document.getElementById('settingsMsg').style.color=d.ok?'var(--green)':'var(--red)';
-    if(d.ok){loadAgents();updateOcPill({connected:true});}
+    if(d.ok){loadAgents();updateOcPill({connected:true});toast('OpenClaw connected — '+d.agents_count+' agents','success');}
+    else{toast('OpenClaw: '+(d.error||'failed'),'error');}
+}
+// --- Toast notifications ---
+function toast(msg,type){
+    type=type||'info';
+    var icons={success:'&#10003;',error:'&#10007;',info:'&#9432;'};
+    var c=document.getElementById('toasts');
+    var t=document.createElement('div');
+    t.className='toast '+type;
+    t.innerHTML='<span class="icon">'+icons[type]+'</span>'+msg;
+    c.appendChild(t);
+    setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(20px)';t.style.transition='all .3s';setTimeout(function(){t.remove();},300);},4000);
+}
+
+// --- Connection status dots ---
+function setDot(id,state){
+    var d=document.getElementById(id);
+    if(d)d.className='conn-dot '+state;
 }
 function updateOcPill(d){
-    var p=document.getElementById('pOc');
-    if(d&&d.connected){p.className='pill on';p.textContent='OpenClaw';}
+    if(d&&d.connected)setDot('dotOc','on');
+    else setDot('dotOc','off');
 }
+// Poll health for connection dots
+async function pollHealth(){
+    try{
+        var h=await api('GET','/api/health');
+        setDot('dotOc',h.openclaw_connected?'on':'off');
+        setDot('dotEng',h.engine_connected?'on':'off');
+        setDot('dotLk',(lkRoom&&lkRoom.state==='connected')?'on':'off');
+    }catch(e){
+        setDot('dotOc','off');setDot('dotEng','off');setDot('dotLk','off');
+    }
+}
+setInterval(pollHealth,10000);
+setTimeout(pollHealth,1000);
 
 // --- Agents ---
 var _avatarsList=[];
@@ -1203,9 +1282,14 @@ async function assignAvatar(agentId,avatarId){
     loadAgents();
 }
 async function syncAgents(){
-    var d=await api('POST','/api/openclaw/connect');
-    if(d.ok)loadAgents();
-    else alert('Error: '+(d.error||'failed'));
+    var btn=event&&event.target;
+    if(btn){btn.classList.add('loading');btn.disabled=true;}
+    try{
+        var d=await api('POST','/api/openclaw/connect');
+        if(d.ok){loadAgents();updateOcPill({connected:true});toast('Synced '+d.agents_count+' agents','success');}
+        else{toast('Sync failed: '+(d.error||'unknown'),'error');}
+    }catch(e){toast('Sync error: '+e.message,'error');}
+    if(btn){btn.classList.remove('loading');btn.disabled=false;}
 }
 
 // --- Avatars ---
@@ -1225,7 +1309,7 @@ document.getElementById('avatarUpload').onchange=async function(){
     if(!this.files.length)return;
     var f=this.files[0],fd=new FormData();fd.append('file',f);
     var d=await(await fetch('/api/avatars/upload',{method:'POST',body:fd})).json();
-    if(d.avatar_id){loadAvatars();alert('Avatar uploaded: '+d.name);}
+    if(d.avatar_id){loadAvatars();loadAgents();toast('Avatar uploaded: '+d.name,'success');}
     this.value='';
 };
 
@@ -1264,7 +1348,7 @@ async function startCall(agentId, options){
 
     currentAgent=agentId;
     document.getElementById('callAgentName').textContent=agentId;
-    document.getElementById('callMeta').textContent='Connecting...';
+    document.getElementById('callMeta').innerHTML='<span class="spinner"></span> Connecting...';
     document.getElementById('transcript').innerHTML='';
     showPage('call');
     setTimeout(function(){window.resizeRenderer();},100);
