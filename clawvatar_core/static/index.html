@@ -1564,6 +1564,12 @@ function endCall(){
     if(_groupCallRoom){
         api('POST','/api/call/group/'+_groupCallRoom+'/end').catch(function(){});
         _groupCallRoom=null;
+        // Clean up group audio captures
+        Object.values(_groupAgentTracks).forEach(function(t){try{t.ctx.close();}catch(e){}});
+        _groupAgentTracks={};_groupActiveSpeaker='';_groupCurrentAvatar='';
+        // Revoke avatar blob URLs
+        Object.values(_groupAvatarCache).forEach(function(u){try{URL.revokeObjectURL(u);}catch(e){}});
+        _groupAvatarCache={};
     }
     if(currentAgent)delete _activeSessions[currentAgent];
     if(lkRoom){lkRoom.disconnect();lkRoom=null;}
@@ -1613,6 +1619,59 @@ function hideGroupCallModal(){
     document.getElementById('groupModal').classList.remove('active');
 }
 
+var _groupAgentTracks={};   // identity → {track, audioEl, captureCtx}
+var _groupActiveSpeaker=''; // identity of current speaker (drives avatar)
+var _groupAvatarCache={};   // agent_id → blob URL (preloaded)
+var _groupCurrentAvatar=''; // agent_id whose avatar is currently displayed
+
+async function preloadGroupAvatars(agentIds){
+    for(var i=0;i<agentIds.length;i++){
+        var aid=agentIds[i];
+        try{
+            var avInfo=await api('GET','/api/agents/'+aid+'/avatar');
+            if(avInfo&&avInfo.avatar_id){
+                var resp=await fetch('/api/avatars/'+avInfo.avatar_id+'/file');
+                if(resp.ok){
+                    var blob=await resp.blob();
+                    _groupAvatarCache[aid]=URL.createObjectURL(blob);
+                }
+            }
+        }catch(e){}
+    }
+}
+
+async function switchGroupAvatar(agentId){
+    if(agentId===_groupCurrentAvatar)return;
+    if(!_groupAvatarCache[agentId])return;
+    _groupCurrentAvatar=agentId;
+    window.loadAvatar(_groupAvatarCache[agentId]);
+    // Highlight active agent in panel
+    document.querySelectorAll('.group-agent').forEach(function(el){el.classList.remove('speaking');});
+    var el=document.getElementById('ga-'+agentId);
+    if(el)el.classList.add('speaking');
+    document.getElementById('callAgentName').textContent=agentId;
+}
+
+function captureGroupAgentAudio(track,identity){
+    // Each agent gets its own audio capture — only the active speaker's audio goes to engine
+    var stream=new MediaStream([track.mediaStreamTrack]);
+    var ctx=new AudioContext();var src=ctx.createMediaStreamSource(stream);
+    var proc=ctx.createScriptProcessor(4096,1,1);
+    proc.onaudioprocess=function(e){
+        // Only send to engine if this agent is the active speaker
+        if(identity!==_groupActiveSpeaker)return;
+        if(!animWs||animWs.readyState!==1)return;
+        var raw=e.inputBuffer.getChannelData(0);
+        var ratio=ctx.sampleRate/16000,len=Math.round(raw.length/ratio),ds=new Float32Array(len);
+        for(var i=0;i<len;i++){var idx=i*ratio,lo=Math.floor(idx),hi=Math.min(lo+1,raw.length-1),f=idx-lo;ds[i]=raw[lo]*(1-f)+raw[hi]*f;}
+        var i16=new Int16Array(ds.length);for(var j=0;j<ds.length;j++)i16[j]=Math.max(-32768,Math.min(32767,Math.round(ds[j]*32768)));
+        var bytes=new Uint8Array(i16.buffer);var bin='';for(var j=0;j<bytes.length;j++)bin+=String.fromCharCode(bytes[j]);
+        animWs.send(JSON.stringify({type:'audio',data:btoa(bin),sample_rate:16000}));
+    };
+    src.connect(proc);proc.connect(ctx.destination);
+    _groupAgentTracks[identity]={track:track,ctx:ctx,proc:proc};
+}
+
 async function startGroupCall(){
     if(_groupSelectedAgents.length===0){toast('Select at least one agent','error');return;}
     hideGroupCallModal();
@@ -1625,37 +1684,59 @@ async function startGroupCall(){
         if(d.error){toast('Error: '+d.error,'error');btn.classList.remove('loading');return;}
 
         _groupCallRoom=d.room;
-        currentAgent=_groupSelectedAgents[0]; // first agent is "primary" for avatar
+        _groupAgentTracks={};
+        _groupActiveSpeaker='';
+        _groupCurrentAvatar='';
+        currentAgent=_groupSelectedAgents[0];
         document.getElementById('callAgentName').textContent='Group: '+_groupSelectedAgents.join(', ');
         document.getElementById('callMeta').innerHTML='<span class="spinner"></span> Connecting '+_groupSelectedAgents.length+' agents...';
         document.getElementById('transcript').innerHTML='';
         showPage('call');
         setTimeout(function(){window.resizeRenderer();},100);
 
-        // Load avatar of first agent
-        var avInfo=await api('GET','/api/agents/'+currentAgent+'/avatar');
-        if(avInfo&&avInfo.file_path){
-            try{
-                var resp=await fetch('/api/avatars/'+avInfo.avatar_id+'/file');
-                if(resp.ok){var blob=await resp.blob();window.loadAvatar(URL.createObjectURL(blob));}
-            }catch(e){}
+        // Preload all avatars in parallel
+        await preloadGroupAvatars(_groupSelectedAgents);
+        // Load first agent's avatar as default
+        if(_groupAvatarCache[currentAgent]){
+            window.loadAvatar(_groupAvatarCache[currentAgent]);
+            _groupCurrentAvatar=currentAgent;
         }
 
         connectAnimWs();
 
         // Connect user to the group room
         lkRoom=new LivekitClient.Room({adaptiveStream:true,dynacast:true});
+
+        // Track subscribed — each agent's audio track
         lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,function(track,pub,p){
             if(track.kind==='audio'){
                 var el=track.attach();el.style.display='none';document.body.appendChild(el);
-                captureAgentAudio(track);
-                // Show which agent connected
-                var who=p.identity||'agent';
-                addTranscript(who+' joined','sys');
+                var identity=p.identity||'agent';
+                captureGroupAgentAudio(track,identity);
+                addTranscript(identity+' joined','sys');
                 document.getElementById('callMeta').textContent='Group call active';
                 updateGroupPanel();
             }
         });
+
+        // Active speaker detection — swap avatar when a different agent speaks
+        lkRoom.on(LivekitClient.RoomEvent.ActiveSpeakersChanged,function(speakers){
+            // Find the loudest non-user speaker
+            for(var i=0;i<speakers.length;i++){
+                var id=speakers[i].identity||'';
+                if(id.startsWith('agent-')){
+                    _groupActiveSpeaker=id;
+                    var agentId=id.replace('agent-','');
+                    switchGroupAvatar(agentId);
+                    if(typeof setSpeakingState==='function')setSpeakingState(true);
+                    return;
+                }
+            }
+            // No agent speaking
+            if(typeof setSpeakingState==='function')setSpeakingState(false);
+        });
+
+        // Transcription
         lkRoom.on(LivekitClient.RoomEvent.TranscriptionReceived,function(segments,participant){
             try{segments.forEach(function(seg){
                 if(!seg.final)return;var text=seg.text||'';if(!text)return;
@@ -1669,6 +1750,7 @@ async function startGroupCall(){
                 }
             });}catch(e){}
         });
+
         lkRoom.on(LivekitClient.RoomEvent.Disconnected,function(){
             document.getElementById('callMeta').textContent='Disconnected';
         });
@@ -1681,9 +1763,7 @@ async function startGroupCall(){
         addTranscript('Group call started: '+d.room,'sys');
         addTranscript('Agents: '+_groupSelectedAgents.join(', '),'sys');
 
-        // Build group panel in sidebar
         buildGroupPanel(_groupSelectedAgents);
-
         toast('Group call started with '+_groupSelectedAgents.length+' agents','success');
     }catch(e){
         toast('Group call error: '+e.message,'error');
